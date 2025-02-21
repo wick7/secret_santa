@@ -5,6 +5,8 @@ yarn-error.log
 
 # Environment variables
 .env
+main/data
+main/data/member.json
 
 # Logs
 logs/
