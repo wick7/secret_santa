@@ -1,0 +1,72 @@
+[
+    {
+      "_id": "1a6a7ece-0b47-48f5-b6b2-678a5cbc1718",
+      "groupId": "bd868406-955c-40fb-b41e-b87a0667c695",
+      "firstName": "Hermina",
+      "lastName": "Hammes",
+      "groupName": "Group1"
+    },
+    {
+      "_id": "48b03d2b-9bc0-44ec-8563-a60a9aeaa543",
+      "groupId": "bd868406-955c-40fb-b41e-b87a0667c695",
+      "firstName": "Alexane",
+      "lastName": "Stracke",
+      "groupName": "Group1"
+    },
+    {
+      "_id": "4a075f53-cb72-4b7c-a930-dd5d9bc5f1a1",
+      "groupId": "bd868406-955c-40fb-b41e-b87a0667c695",
+      "firstName": "Verla",
+      "lastName": "Pouros",
+      "groupName": "Group1"
+    },
+    {
+      "_id": "d873405f-552e-4b73-81d3-da58539eb574",
+      "groupId": "bd868406-955c-40fb-b41e-b87a0667c695",
+      "firstName": "Albin",
+      "lastName": "Roberts",
+      "groupName": "Group1"
+    },
+    {
+      "_id": "21d74836-ec56-4fc8-8e04-78f49978bb20",
+      "groupId": "bd868406-955c-40fb-b41e-b87a0667c695",
+      "firstName": "Lamont",
+      "lastName": "Champlin-Russel",
+      "groupName": "Group1"
+    },
+    {
+      "_id": "fa746685-592e-4e1a-add0-96511531a7b5",
+      "groupId": "0fe3f475-0f5d-4709-bc85-e70ef3e38784",
+      "firstName": "Lloyd",
+      "lastName": "Lubowitz",
+      "groupName": "Group2"
+    },
+    {
+      "_id": "87298424-33fc-4096-ac83-f7f3f6c90232",
+      "groupId": "0fe3f475-0f5d-4709-bc85-e70ef3e38784",
+      "firstName": "Roma",
+      "lastName": "Dare",
+      "groupName": "Group2"
+    },
+    {
+      "_id": "e55fe1cf-181a-4d4f-bac9-572283c7ade3",
+      "groupId": "0fe3f475-0f5d-4709-bc85-e70ef3e38784",
+      "firstName": "Trent",
+      "lastName": "Koch",
+      "groupName": "Group2"
+    },
+    {
+      "_id": "e7a50810-4a7f-4183-9bd4-b80c7aff24a3",
+      "groupId": "0fe3f475-0f5d-4709-bc85-e70ef3e38784",
+      "firstName": "Hal",
+      "lastName": "Considine",
+      "groupName": "Group2"
+    },
+    {
+      "_id": "7db0b006-f2fb-4ab9-aa83-43356029a8f7",
+      "groupId": "0fe3f475-0f5d-4709-bc85-e70ef3e38784",
+      "firstName": "Esperanza",
+      "lastName": "Gerhold",
+      "groupName": "Group2"
+    }
+  ]

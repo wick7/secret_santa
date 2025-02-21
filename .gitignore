@@ -1,0 +1,39 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log
+
+# Environment variables
+.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+docker-compose.override.yml
+docker-compose.override.yaml
+docker-compose*.log
+.dockerignore
+
+# MongoDB Data (if using local DB storage)
+mongo-data/
+
+# Compiled files
+dist/
+build/
+*.out
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn

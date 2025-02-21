@@ -1,0 +1,31 @@
+{
+  "name": "secret_santa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "workspaces": [
+    "main",
+    "interface"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start:main": "node main.js",
+    "start:interface": "node interface.js",
+    "dev:main": "nodemon main.js",
+    "dev:interface": "nodemon interface.js"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^9.5.0",
+    "date-fns": "^4.1.0",
+    "express": "^4.21.2",
+    "mongodb": "^6.13.0",
+    "mongoose": "^8.10.1",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

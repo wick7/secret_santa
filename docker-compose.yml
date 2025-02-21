@@ -1,0 +1,50 @@
+version: '3'
+services:
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    container_name: main-container
+    restart: always
+    command: ["node", "main/main.js"]
+    networks:
+      - app-network
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/secret_santa
+
+  interface:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    container_name: interface-container
+    restart: always
+    command: ["node", "interface/interface.js"]
+    networks:
+      - app-network
+
+  mongodb:
+    image: mongo:5
+    container_name: mongodb-container
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: always
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+volumes:
+  mongo-data:
+
+networks:
+  app-network:
+    driver: bridge
