@@ -10,10 +10,16 @@ const mongoose = require('mongoose');
 
 //Utils
 const { faker } = require('@faker-js/faker');
-const memberData = require('./data/member.json');
+const groupBy = require('./utils/index');
+const shuffleArray = require('./utils/index');
+
+// Models
+const Member = require('./models/Member');
+const Match = require('./models/Match');
+const Group = require('./models/Group');
 
 
-// Use the environment variable or a default value
+// Mongo
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/secret_santa';
 
 mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
@@ -22,142 +28,97 @@ mongoose.connection.once('open', () => {
   console.log('Connected to MongoDB');
 });
 
+// Middleware
+app.use(express.json());  // Enables JSON body parsing
+app.use(express.urlencoded({ extended: true })); 
 
-// app.get('/match', (req, res) => {
-//   const groupedMembers = groupBy(memberData, 'groupId');
-//   const matches = [];
 
-//   for (const groupId in groupedMembers) {
-//     const groupMembers = groupedMembers[groupId];
-//     const shuffledMembers = shuffleArray([...groupMembers]);
-
-//     for (let i = 0; i < shuffledMembers.length; i++) {
-//       const secretSanta = shuffledMembers[i];
-//       const giftee = shuffledMembers[(i + 1) % shuffledMembers.length]; // Circular matching
-
-//       matches.push({
-//         secretSanta: secretSanta._id,
-//         giftee: giftee._id,
-//         secretSantaFirstName: secretSanta.firstName,
-//         gifteeFirstName: giftee.firstName,
-//         groupId: giftee.groupId,
-//         groupName: giftee.groupName,
-//         dateMatched: new Date().toISOString(),
-//       });
-//     }
-//   }
-
-//   res.send(`
-//     <html>
-//       <body>
-//         <h1>Match Results</h1>
-//         ${matches
-//           .map(
-//             (member) => `
-//               <div>
-//                 <strong>Secret Santa:</strong> ${member.secretSantaFirstName} <br>
-//                 <strong>Giftee:</strong> ${member.gifteeFirstName} <br>
-//                 <strong>Date Matched:</strong> ${format(member.dateMatched, 'MM-dd-yyyy')}
-//               </div><hr>
-//             `
-//           )
-//           .join('')}
-//       </body>
-//     </html>
-//   `);
-// });
-const Member = require('./models/Member');
-const Match = require('./models/Match');
-
-// Match Secret Santas and Save to DB
-app.get('/match', async (req, res) => {
+// MATCHES
+app.post('/match/:groupId', async (req, res) => {
   try {
-    // Fetch all members from DB
-    const members = await Member.find();
-    if (members.length < 2) return res.status(400).send('Not enough members to match');
+    const { groupId } = req.params; // Get groupId from URL params
 
-    // Group members by groupId
-    const groupedMembers = groupBy(members, 'groupId');
+    // Fetch the group and its members
+    const group = await Group.findById(groupId).populate('members');
+    
+    if (!group) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    const members = group.members;  // List of members in this group
+    
+    if (members.length < 2) {
+      return res.status(400).json({ error: "Not enough members in the group to create matches" });
+    }
+
+    // Perform matching logic (e.g., randomize and ensure no repeats)
     const matches = [];
+    const shuffledMembers = shuffleArray([...members]);  // Shuffle the array to randomize the matching
 
-    for (const groupId in groupedMembers) {
-      const groupMembers = groupedMembers[groupId];
-      const shuffledMembers = shuffleArray([...groupMembers]);
+    for (let i = 0; i < shuffledMembers.length; i++) {
+      const secretSanta = shuffledMembers[i];
+      const giftee = shuffledMembers[(i + 1) % shuffledMembers.length]; // Circular matching
 
-      for (let i = 0; i < shuffledMembers.length; i++) {
-        const secretSanta = shuffledMembers[i];
-        const giftee = shuffledMembers[(i + 1) % shuffledMembers.length]; // Circular matching
-
-        // Ensure Secret Santa does not get the same giftee as last time
-        const pastMatch = await Match.findOne({
-          secretSanta: secretSanta._id,
-          giftee: giftee._id,
-        });
-
-        if (pastMatch) {
-          return res.status(400).send('Duplicate match detected, retrying...');
-        }
-
-        const newMatch = new Match({
-          secretSanta: secretSanta._id,
-          giftee: giftee._id,
-          secretSantaFirstName: secretSanta.firstName,
-          gifteeFirstName: giftee.firstName,
-          groupId: giftee.groupId,
-          groupName: giftee.groupName,
-        });
-
-        await newMatch.save();
-        matches.push(newMatch);
+      // Ensure secretSanta is not matched with themselves
+      if (secretSanta._id === giftee._id) {
+        return res.status(400).json({ error: "Invalid matching, retrying..." });
       }
+
+      // Create the match
+      const newMatch = new Match({
+        secretSanta: secretSanta._id,
+        giftee: giftee._id,
+        secretSantaFirstName: secretSanta.firstName,
+        gifteeFirstName: giftee.firstName,
+        groupId: group._id,
+        groupName: group.name,
+        dateMatched: new Date().toISOString(),
+      });
+
+      // Save the match
+      await newMatch.save();
+      matches.push(newMatch);
     }
 
-    res.json(matches);
-    if (matches.length) {
-      res.send(`
-        <html>
-          <body>
-            <h1>Match Results</h1>
-            ${matches
-          .map(
-            (member) => `
-                  <div>
-                    <strong>Secret Santa:</strong> ${member.secretSantaFirstName} <br>
-                    <strong>Giftee:</strong> ${member.gifteeFirstName} <br>
-                    <strong>Date Matched:</strong> ${format(member.dateMatched, 'MM-dd-yyyy')}
-                  </div><hr>
-                `
-          )
-          .join('')}
-          </body>
-        </html>
-      `);
-    } else if (members.length === 0) {
-      res.send('No matches found');
-    }
+    res.status(201).json({
+      message: 'Matches created successfully!',
+      matches: matches
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    console.error('Error matching members:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// Utility to group members by a key (e.g., groupId)
-function groupBy(array, key) {
-  return array.reduce((result, current) => {
-    (result[current[key]] = result[current[key]] || []).push(current);
-    return result;
-  }, {});
-}
-
-// Utility to shuffle an array (Fisher-Yates shuffle)
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+app.get('/matches', async (req, res) => {
+  const matches = await Match.find();
+  if (matches.length) {
+    res.send(`
+      <html>
+        <body>
+          <h1>Match Results</h1>
+          ${matches
+        .map(
+          (member) => `
+                <div>
+                  <strong>Secret Santa:</strong> ${member.secretSantaFirstName} <br>
+                  <strong>Giftee:</strong> ${member.gifteeFirstName} <br>
+                  <strong>Date Matched:</strong> ${format(member.dateMatched, 'MM-dd-yyyy')}
+                </div><hr>
+              `
+        )
+        .join('')}
+        </body>
+      </html>
+    `);
+  } else if (matches.length === 0) {
+    res.send('No matches found');
   }
-  return array;
-}
+});
 
+
+// MEMBERS
 app.post('/add_member', async (req, res) => {
   try {
     const { firstName, lastName, groupId, groupName, phoneNumber } = req.body;
@@ -187,27 +148,43 @@ app.get('/members', async (req, res) => {
   res.json(members);
 });
 
-app.get('/generate_members', (req, res) => {
-  const people = [];
+// GROUPS
+app.post('/group', async (req, res) => {
+  try {
+    const { name, year, memberIds } = req.body;  // Expecting memberIds as an array of ObjectIds
 
-  // Generate an array of 10 random people
-  for (let i = 0; i < 10; i++) {
-    const person = {
-      _id: uuidv4(), // Generate random GUID for _id
-      groupId: uuidv4(), // Generate random GUID for groupId
-      firstName: faker.name.firstName(), // Random first name
-      lastName: faker.name.lastName() // Random last name
-    };
-    people.push(person);
+    if (!name || !year || !memberIds || memberIds.length === 0) {
+      return res.status(400).json({ error: 'Missing required fields (name, year, memberIds)' });
+    }
+
+    // Create a new group with members
+    const newGroup = new Group({
+      name,
+      year,
+      members: memberIds,  // Array of member ObjectIds
+    });
+
+    // Save the new group to the database
+    await newGroup.save();
+
+    res.status(201).json({ message: 'Group created successfully!', data: newGroup });
+  } catch (err) {
+    console.error('Error creating group:', err);
+    res.status(500).json({ error: 'Error creating group' });
   }
-  console.log(people);
-  res.json(people);
 });
 
-app.get('/healthcheck', (req, res) => {
-  res.send('Health Check');
+app.get('/groups', async (req, res) => {
+  try {
+    const groups = await Group.find().populate('members'); // Fetch all groups and populate members
+    res.status(200).json(groups);
+  } catch (err) {
+    console.error('Error fetching groups:', err);
+    res.status(500).json({ error: 'Error fetching groups' });
+  }
 });
 
+// Temp Interface
 app.get('/', (req, res) => {
   res.send(`
     <html>
