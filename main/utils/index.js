@@ -1,5 +1,7 @@
+const { uuidv4 } = require('uuid');
+
 // Utility to group members by a key (e.g., groupId)
-export const groupBy = (array, key) => {
+const groupBy = (array, key) => {
     return array.reduce((result, current) => {
       (result[current[key]] = result[current[key]] || []).push(current);
       return result;
@@ -7,7 +9,7 @@ export const groupBy = (array, key) => {
   }
   
   // Utility to shuffle an array (Fisher-Yates shuffle)
-export const shuffleArray = () => {
+const shuffleArray = (array) => {
     for (let i = array.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
@@ -15,7 +17,7 @@ export const shuffleArray = () => {
     return array;
   }
 
-export const generate_members = () => {
+const generate_members = () => {
     const people = [];
   
     // Generate an array of 10 random people
@@ -30,3 +32,5 @@ export const generate_members = () => {
     }
     console.log(people);
   }
+
+module.exports = { groupBy, shuffleArray, generate_members };

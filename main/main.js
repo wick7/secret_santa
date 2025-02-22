@@ -5,13 +5,10 @@ const port = 3000;
 
 //Libraries
 const { format } = require('date-fns');
-const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 
 //Utils
-const { faker } = require('@faker-js/faker');
-const groupBy = require('./utils/index');
-const shuffleArray = require('./utils/index');
+const { shuffleArray } = require('./utils/index');
 
 // Models
 const Member = require('./models/Member');
@@ -66,19 +63,21 @@ app.post('/match/:groupId', async (req, res) => {
 
       // Create the match
       const newMatch = new Match({
-        secretSanta: secretSanta._id,
-        giftee: giftee._id,
-        secretSantaFirstName: secretSanta.firstName,
-        gifteeFirstName: giftee.firstName,
+        secretSantaId: secretSanta._id,
+        gifteeId: giftee._id,
         groupId: group._id,
-        groupName: group.name,
         dateMatched: new Date().toISOString(),
       });
 
       // Save the match
-      await newMatch.save();
-      matches.push(newMatch);
+      const savedMatch = await newMatch.save();
+      matches.push(savedMatch);
+
+      // Save match Id to the group
+      group.matchIds.push(savedMatch._id);
     }
+
+    await group.save();
 
     res.status(201).json({
       message: 'Matches created successfully!',
@@ -92,28 +91,36 @@ app.post('/match/:groupId', async (req, res) => {
 });
 
 app.get('/matches', async (req, res) => {
-  const matches = await Match.find();
-  if (matches.length) {
-    res.send(`
-      <html>
-        <body>
-          <h1>Match Results</h1>
-          ${matches
-        .map(
-          (member) => `
-                <div>
-                  <strong>Secret Santa:</strong> ${member.secretSantaFirstName} <br>
-                  <strong>Giftee:</strong> ${member.gifteeFirstName} <br>
-                  <strong>Date Matched:</strong> ${format(member.dateMatched, 'MM-dd-yyyy')}
-                </div><hr>
-              `
-        )
-        .join('')}
-        </body>
-      </html>
-    `);
-  } else if (matches.length === 0) {
-    res.send('No matches found');
+  try {
+    const matches = await Match.find()
+      .populate('secretSantaId', 'firstName')
+      .populate('gifteeId', 'firstName');
+
+    if (matches.length) {
+      res.send(`
+        <html>
+          <body>
+            <h1>Match Results</h1>
+            ${matches
+              .map(
+                (match) => `
+                  <div>
+                    <strong>Secret Santa:</strong> ${match.secretSantaId.firstName} <br>
+                    <strong>Giftee:</strong> ${match.gifteeId.firstName} <br>
+                    <strong>Date Matched:</strong> ${format(match.dateMatched, 'MM-dd-yyyy')}
+                  </div><hr>
+                `
+              )
+              .join('')}
+          </body>
+        </html>
+      `);
+    } else {
+      res.send('No matches found');
+    }
+  } catch (err) {
+    console.error('Error fetching matches:', err);
+    res.status(500).send('Error fetching matches');
   }
 });
 
@@ -121,17 +128,14 @@ app.get('/matches', async (req, res) => {
 // MEMBERS
 app.post('/add_member', async (req, res) => {
   try {
-    const { firstName, lastName, groupId, groupName, phoneNumber } = req.body;
-    if (!firstName || !lastName || !groupId || !groupName || !phoneNumber) {
+    const { firstName, lastName, phoneNumber } = req.body;
+    if (!firstName || !lastName || !phoneNumber) {
       return res.status(400).send('Missing required fields');
     }
 
     const newMember = new Member({
-      _id: uuidv4(),
-      groupId,
       firstName,
       lastName,
-      groupName,
       phoneNumber,
     });
 
@@ -151,26 +155,43 @@ app.get('/members', async (req, res) => {
 // GROUPS
 app.post('/group', async (req, res) => {
   try {
-    const { name, year, memberIds } = req.body;  // Expecting memberIds as an array of ObjectIds
+    const { id, name, year, memberIds } = req.body;  // Expecting memberIds as an array of ObjectIds
 
     if (!name || !year || !memberIds || memberIds.length === 0) {
       return res.status(400).json({ error: 'Missing required fields (name, year, memberIds)' });
     }
 
-    // Create a new group with members
-    const newGroup = new Group({
-      name,
-      year,
-      members: memberIds,  // Array of member ObjectIds
-    });
+    if (id) {
+      // If an ID is provided, update the existing group
+      const group = await Group.findByIdAndUpdate(
+        id,  // Use the provided ID to find and update the group
+        { name, year, members: memberIds },
+        { new: true }  // Return the updated group
+      );
 
-    // Save the new group to the database
-    await newGroup.save();
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
 
-    res.status(201).json({ message: 'Group created successfully!', data: newGroup });
+      return res.status(200).json({ message: 'Group updated successfully!', data: group });
+    }
+
+    if (!id) {
+      // If no ID is provided, create a new group
+      const newGroup = new Group({
+        name,
+        year,
+        members: memberIds,
+      });
+
+      // Save the new group to the database
+      await newGroup.save();
+      res.status(201).json({ message: 'Group created successfully!', data: newGroup });
+    }
+
   } catch (err) {
-    console.error('Error creating group:', err);
-    res.status(500).json({ error: 'Error creating group' });
+    console.error('Error handling group:', err);
+    res.status(500).json({ error: 'Error processing group' });
   }
 });
 
@@ -194,9 +215,9 @@ app.get('/', (req, res) => {
       <body>
         <h1>Welcome!</h1>
         <p>Click a button to navigate:</p>
-        <button onclick="location.href='/healthcheck'">Health Check</button>
-        <button onclick="location.href='/generate_members'">Generate Members</button>
-        <button onclick="location.href='/match'">Match</button>
+        <button onclick="location.href='/matches'">See Matches</button>
+        <button onclick="location.href='/members'">See Members</button>
+        <button onclick="location.href='/groups'">See Groups</button>
       </body>
     </html>
   `);
