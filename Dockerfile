@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 3000
 
 # Command to start the Node.js app *Command in docker-compose.yml
-# CMD ["node", "main/main.js"]
+CMD ["node", "main/main.js"]
