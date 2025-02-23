@@ -92,7 +92,15 @@ app.post('/match/:groupId', async (req, res) => {
 
 app.get('/matches', async (req, res) => {
   try {
-    const matches = await Match.find()
+    // Get the groupId from the query parameters
+    const { groupId } = req.query;
+
+    if (!groupId) {
+      return res.status(400).send('Group ID is required');
+    }
+
+    // Fetch matches for the specific groupId and populate the secretSantaId and gifteeId
+    const matches = await Match.find({ groupId })
       .populate('secretSantaId', 'firstName')
       .populate('gifteeId', 'firstName');
 
@@ -116,7 +124,7 @@ app.get('/matches', async (req, res) => {
         </html>
       `);
     } else {
-      res.send('No matches found');
+      res.send('No matches found for this group');
     }
   } catch (err) {
     console.error('Error fetching matches:', err);
