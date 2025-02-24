@@ -42,6 +42,14 @@ app.post('/match/:groupId', async (req, res) => {
       return res.status(404).json({ error: "Group not found" });
     }
 
+    // Check if the group is archived
+    if (group.archived) {
+      return res.status(400).json({ error: "The group is archived. No further action can be taken on it." });
+    }
+
+    // CHECK IF GROUP ALREADY HAS MATCHES, IF SO RETURN 400 AND SHOW MATCHES
+    // SUGGEST OTHER OPTIONS IF THEY WANT TO RE-RUN MATCHES
+
     const members = group.members;  // List of members in this group
     
     if (members.length < 2) {
@@ -53,13 +61,25 @@ app.post('/match/:groupId', async (req, res) => {
     const shuffledMembers = shuffleArray([...members]);  // Shuffle the array to randomize the matching
 
     for (let i = 0; i < shuffledMembers.length; i++) {
-      const secretSanta = shuffledMembers[i];
-      const giftee = shuffledMembers[(i + 1) % shuffledMembers.length]; // Circular matching
+      let secretSanta = shuffledMembers[i];
+      let giftee = shuffledMembers[(i + 1) % shuffledMembers.length]; // Circular matching
 
-      // Ensure secretSanta is not matched with themselves
-      if (secretSanta._id === giftee._id) {
-        return res.status(400).json({ error: "Invalid matching, retrying..." });
+      // Check if secretSanta and giftee have been matched before
+      let attempts = 0;
+      while (secretSanta.lastGifteeMatch.includes(giftee._id) && attempts < members.length) {
+        // Try next giftee in the shuffled array
+        giftee = shuffledMembers[(i + 1 + attempts) % shuffledMembers.length];
+        attempts++;
+
+        // If we've cycled through all members, exit to prevent infinite loop
+        if (attempts >= members.length) {
+          return res.status(400).json({ error: "Could not find a valid match. Please try again." });
+        }
       }
+
+      // Add the giftee to the secretSanta's lastGifteeMatch array
+      // NOTE THIS NEEDS TO MOVE TO THE NOTIFICATION ENDPOINT
+      secretSanta.lastGifteeMatch.push(giftee._id);
 
       // Create the match
       const newMatch = new Match({
@@ -75,6 +95,10 @@ app.post('/match/:groupId', async (req, res) => {
 
       // Save match Id to the group
       group.matchIds.push(savedMatch._id);
+
+      // Save the updated members' lastGifteeMatch
+      await secretSanta.save();
+      await giftee.save();
     }
 
     await group.save();
@@ -92,15 +116,22 @@ app.post('/match/:groupId', async (req, res) => {
 
 app.get('/matches', async (req, res) => {
   try {
-    // Get the groupId from the query parameters
-    const { groupId } = req.query;
+    const { groupId, includeArchived } = req.query;  // Get the groupId and includeArchived from query parameters
 
     if (!groupId) {
       return res.status(400).send('Group ID is required');
     }
 
+    // Build the query to include or exclude archived matches
+    let query = { groupId };
+    
+    // If includeArchived is not provided or false, include only non-archived matches
+    if (includeArchived !== 'true') {
+      query.archived = false;  // Only non-archived matches
+    }
+
     // Fetch matches for the specific groupId and populate the secretSantaId and gifteeId
-    const matches = await Match.find({ groupId })
+    const matches = await Match.find(query)
       .populate('secretSantaId', 'firstName')
       .populate('gifteeId', 'firstName');
 
@@ -136,22 +167,39 @@ app.get('/matches', async (req, res) => {
 // MEMBERS
 app.post('/add_member', async (req, res) => {
   try {
-    const { firstName, lastName, phoneNumber } = req.body;
-    if (!firstName || !lastName || !phoneNumber) {
-      return res.status(400).send('Missing required fields');
+    const members = req.body;  // Expecting an array of member objects
+
+    if (!Array.isArray(members) || members.length === 0) {
+      return res.status(400).send('Request body must be an array of members');
     }
 
-    const newMember = new Member({
-      firstName,
-      lastName,
-      phoneNumber,
-    });
+    // Loop through each member object in the array
+    for (const memberData of members) {
+      const { firstName, lastName, phoneNumber } = memberData;
 
-    await newMember.save();
-    res.status(201).send('Member added successfully!');
+      // Check if all required fields are present
+      if (!firstName || !lastName || !phoneNumber) {
+        return res.status(400).send('Missing required fields in one or more member objects');
+      }
+
+      // Create a new member object
+      const newMember = new Member({
+        firstName,
+        lastName,
+        phoneNumber,
+        lastGifteeMatch: [],
+      });
+
+      // Save the member to the database
+      await newMember.save();
+    }
+
+    // Respond with success message
+    res.status(201).send('Members added successfully!');
+
   } catch (err) {
     console.error(err);
-    res.status(500).send('Error adding member');
+    res.status(500).send('Error adding members');
   }
 });
 
