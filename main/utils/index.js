@@ -1,3 +1,6 @@
+const mongoose = require('mongoose');
+const Match = require('../models/Match'); // Adjust path as needed
+const Group = require('../models/Group'); // Adjust path as needed
 const { uuidv4 } = require('uuid');
 
 // Utility to group members by a key (e.g., groupId)
@@ -32,5 +35,70 @@ const generate_members = () => {
     }
     console.log(people);
   }
+  
+  /**
+   * Removes all unarchived matches from a provided array of match IDs
+   * @param {Array} matchIds - Array of populated Match objects
+   * @param {string|mongoose.Types.ObjectId} groupId - The ID of the group these matches belong to
+   * @returns {Promise<Object>} Result object with success status and details
+   */
+  async function removeUnarchivedMatches(matchIds, groupId) {
+    try {
+      // Validate inputs
+      if (!Array.isArray(matchIds)) {
+        return {
+          success: false,
+          message: 'matchIds must be an array',
+          removedCount: 0
+        };
+      }
+  
+      if (!mongoose.Types.ObjectId.isValid(groupId)) {
+        return {
+          success: false,
+          message: 'Invalid group ID format',
+          removedCount: 0
+        };
+      }
+  
+      // Filter out match IDs that are not archived
+      const unarchivedMatchIds = matchIds
+        .filter(match => match.archived === false)
+        .map(match => match._id);
+      
+      if (unarchivedMatchIds.length === 0) {
+        return {
+          success: true,
+          message: 'No unarchived matches found',
+          removedCount: 0
+        };
+      }
+  
+      // Remove unarchived matches from the database
+      const deleteResult = await Match.deleteMany({
+        _id: { $in: unarchivedMatchIds },
+        groupId: groupId
+      });
+  
+      // Update the group's matchIds array to remove references to deleted matches
+      await Group.findByIdAndUpdate(groupId, {
+        $pull: { matchIds: { $in: unarchivedMatchIds } }
+      });
+  
+      return {
+        success: true,
+        message: `Successfully removed ${deleteResult.deletedCount} unarchived matches`,
+        removedCount: deleteResult.deletedCount,
+        removedMatchIds: unarchivedMatchIds
+      };
+    } catch (error) {
+      console.error('Error removing unarchived matches:', error);
+      return {
+        success: false,
+        message: `Error removing unarchived matches: ${error.message}`,
+        error: error
+      };
+    }
+  }
 
-module.exports = { groupBy, shuffleArray, generate_members };
+module.exports = { groupBy, shuffleArray, generate_members, removeUnarchivedMatches };

@@ -30,7 +30,9 @@ app.use(express.json());  // Enables JSON body parsing
 app.use(express.urlencoded({ extended: true })); 
 
 
-// MATCHES
+// MATCHES SECTION -------------------------------------------
+// CREATE MATCHES
+//#region
 app.post('/match/:groupId', async (req, res) => {
   try {
     const { groupId } = req.params; // Get groupId from URL params
@@ -49,6 +51,10 @@ app.post('/match/:groupId', async (req, res) => {
 
     // CHECK IF GROUP ALREADY HAS MATCHES, IF SO RETURN 400 AND SHOW MATCHES
     // SUGGEST OTHER OPTIONS IF THEY WANT TO RE-RUN MATCHES
+
+    if (group.matchIds.length > 0) {
+      removeUnarchivedMatches(group.matchIds, group._id);
+    }
 
     const members = group.members;  // List of members in this group
     
@@ -113,7 +119,10 @@ app.post('/match/:groupId', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+//#endregion
 
+// GET MATCHES
+//#region
 app.get('/matches', async (req, res) => {
   try {
     const { groupId, includeArchived } = req.query;  // Get the groupId and includeArchived from query parameters
@@ -162,9 +171,11 @@ app.get('/matches', async (req, res) => {
     res.status(500).send('Error fetching matches');
   }
 });
+//#endregion
 
-
-// MEMBERS
+// MEMBERS SECTION -------------------------------------------
+// ADD MEMBER
+//#region
 app.post('/add_member', async (req, res) => {
   try {
     const members = req.body;  // Expecting an array of member objects
@@ -202,13 +213,60 @@ app.post('/add_member', async (req, res) => {
     res.status(500).send('Error adding members');
   }
 });
+//#endregion
 
+// MEMBER UPDATE LAST GIFTEE MATCH
+//#region
+app.post('/update_lastGifteeMatch/:memberId', async (req, res) => {
+  try {
+    const { memberId } = req.params; // Get the memberId from the URL params
+    const { gifteeId } = req.body; // Get the gifteeId from the request body
+
+    if (!gifteeId) {
+      return res.status(400).json({ error: 'GifteeId is required' });
+    }
+
+    // Find the member by their ID
+    const member = await Member.findById(memberId);
+
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+
+    // Add the new gifteeId to the lastGifteeMatch array
+    member.lastGifteeMatch.push(gifteeId);
+
+    // Sort the lastGifteeMatch array based on ObjectId timestamps (ascending)
+    member.lastGifteeMatch.sort((a, b) => b.getTimestamp() - a.getTimestamp());
+
+    // Keep only the most recent match (the first element in the sorted array)
+    member.lastGifteeMatch = [member.lastGifteeMatch[0]];
+
+    // Save the updated member
+    await member.save();
+
+    res.status(200).json({
+      message: 'Member lastGifteeMatch updated successfully!',
+      lastGifteeMatch: member.lastGifteeMatch
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error updating lastGifteeMatch' });
+  }
+});
+//#endregion
+
+// GET ALL MEMBERS
+//#region
 app.get('/members', async (req, res) => {
   const members = await Member.find();
   res.json(members);
 });
+//#endregion
 
-// GROUPS
+// GROUPS SECTION -------------------------------------------
+// CREATE OR UPDATE GROUP
+//#region
 app.post('/group', async (req, res) => {
   try {
     const { id, name, year, memberIds } = req.body;  // Expecting memberIds as an array of ObjectIds
@@ -250,7 +308,10 @@ app.post('/group', async (req, res) => {
     res.status(500).json({ error: 'Error processing group' });
   }
 });
+//#endregion
 
+// GET ALL GROUPS
+//#region
 app.get('/groups', async (req, res) => {
   try {
     const groups = await Group.find().populate('members'); // Fetch all groups and populate members
@@ -260,6 +321,149 @@ app.get('/groups', async (req, res) => {
     res.status(500).json({ error: 'Error fetching groups' });
   }
 });
+//#endregion
+
+// Notify Matches
+//#region
+/**
+ * Endpoint to get the notification for the latest match in a group
+ * POST /match/notification/:groupId
+ */
+app.post('/match/notification/:groupId', async (req, res) => {
+  try {
+    const { groupId } = req.params;
+
+    // Validate groupId
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID format'
+      });
+    }
+
+    // Find the group
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if group has any matches
+    if (!group.matchIds || group.matchIds.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No matches found for this group'
+      });
+    }
+
+    // Get the latest match ID (assuming last item in array is most recent)
+    const latestMatchId = group.matchIds[group.matchIds.length - 1];
+
+    // Find the match and confirm it's not archived
+    const match = await Match.findById(latestMatchId);
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Latest match not found'
+      });
+    }
+
+    if (match.archived) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latest match is already archived (notification already sent)'
+      });
+    }
+
+    // Get the secret Santa and giftee details
+    const secretSanta = await Member.findById(match.secretSantaId);
+    const giftee = await Member.findById(match.gifteeId);
+
+    if (!secretSanta || !giftee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Secret Santa or giftee member not found'
+      });
+    }
+    
+    // ARCHIVE MATCH AND POPULATE MEMBER WHO IS SECRETE SANTA WITH GIFTEE'S ID
+
+    // Generate text message string
+    const messageText = `Hi ${secretSanta.firstName}, you are the Secret Santa for ${giftee.firstName} ${giftee.lastName}! Please refer to the Excel spreadsheet for gift ideas. Happy gifting!`;
+
+    // Format response based on requested content type
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+      // Return JSON if explicitly requested
+      return res.json({
+        success: true,
+        secretSanta: {
+          id: secretSanta._id,
+          name: `${secretSanta.firstName} ${secretSanta.lastName}`,
+          phoneNumber: secretSanta.phoneNumber
+        },
+        giftee: {
+          id: giftee._id,
+          name: `${giftee.firstName} ${giftee.lastName}`,
+          phoneNumber: giftee.phoneNumber
+        },
+        messageText,
+        matchId: match._id
+      });
+    } else {
+      // Return HTML by default
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Secret Santa Notification</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
+            .container { max-width: 800px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; border-radius: 5px; }
+            .details { margin-bottom: 20px; }
+            .message { background-color: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; }
+            h1 { color: #333; }
+            h2 { color: #555; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>Secret Santa Notification</h1>
+            
+            <div class="details">
+              <h2>Secret Santa</h2>
+              <p><strong>Name:</strong> ${secretSanta.firstName} ${secretSanta.lastName}</p>
+              <p><strong>Phone:</strong> ${secretSanta.phoneNumber}</p>
+            </div>
+            
+            <div class="details">
+              <h2>Giftee</h2>
+              <p><strong>Name:</strong> ${giftee.firstName} ${giftee.lastName}</p>
+              <p><strong>Phone:</strong> ${giftee.phoneNumber}</p>
+            </div>
+            
+            <div class="message">
+              <h2>Text Message</h2>
+              <p>${messageText}</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+      
+      return res.send(html);
+    }
+  } catch (error) {
+    console.error('Error generating match notification:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while generating match notification',
+      error: error.message
+    });
+  }
+});
+//#endregion
 
 // Temp Interface
 app.get('/', (req, res) => {
