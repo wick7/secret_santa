@@ -1,0 +1,29 @@
+<table class="table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Phone Number</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- This content will be replaced by the API response -->
+      {{#each members}}
+      <tr>
+        <td>{{firstName}} {{lastName}}</td>
+        <td>{{phoneNumber}}</td>
+        <td>
+          <button class="btn btn-sm" 
+                  hx-get="/partials/member-form?id=${member._id}" 
+                  hx-target="#member-form-container"
+                  hx-swap="innerHTML">Edit</button>
+          <button class="btn btn-sm btn-danger" 
+                  hx-delete="http://localhost:3001/api/members/${member._id}" 
+                  hx-confirm="Are you sure you want to delete this member?"
+                  hx-target="#members-list"
+                  hx-swap="innerHTML">Delete</button>
+        </td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>

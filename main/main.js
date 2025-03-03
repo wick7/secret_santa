@@ -1,7 +1,14 @@
 //Express Setup
 const express = require('express');
 const app = express();
+const cors = require('cors');
 const port = 3000;
+
+
+app.use(cors({
+  origin: ['http://interface:3000', 'http://localhost:3002'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE']
+}));
 
 //Libraries
 const { format } = require('date-fns');
@@ -33,7 +40,7 @@ app.use(express.urlencoded({ extended: true }));
 // MATCHES SECTION -------------------------------------------
 // CREATE MATCHES
 //#region
-app.post('/match/:groupId', async (req, res) => {
+app.post('/api/match/:groupId', async (req, res) => {
   try {
     const { groupId } = req.params; // Get groupId from URL params
 
@@ -123,7 +130,7 @@ app.post('/match/:groupId', async (req, res) => {
 
 // GET MATCHES
 //#region
-app.get('/matches', async (req, res) => {
+app.get('/api/matches', async (req, res) => {
   try {
     const { groupId, includeArchived } = req.query;  // Get the groupId and includeArchived from query parameters
 
@@ -176,7 +183,7 @@ app.get('/matches', async (req, res) => {
 // MEMBERS SECTION -------------------------------------------
 // ADD MEMBER
 //#region
-app.post('/add_member', async (req, res) => {
+app.post('/api/add_member', async (req, res) => {
   try {
     const members = req.body;  // Expecting an array of member objects
 
@@ -217,7 +224,7 @@ app.post('/add_member', async (req, res) => {
 
 // MEMBER UPDATE LAST GIFTEE MATCH
 //#region
-app.post('/update_lastGifteeMatch/:memberId', async (req, res) => {
+app.post('/api/update_lastGifteeMatch/:memberId', async (req, res) => {
   try {
     const { memberId } = req.params; // Get the memberId from the URL params
     const { gifteeId } = req.body; // Get the gifteeId from the request body
@@ -258,16 +265,48 @@ app.post('/update_lastGifteeMatch/:memberId', async (req, res) => {
 
 // GET ALL MEMBERS
 //#region
-app.get('/members', async (req, res) => {
+app.get('/api/members', async (req, res) => {
   const members = await Member.find();
   res.json(members);
+});
+
+// In main.js
+app.get('/api/members-html', async (req, res) => {
+  const members = await Member.find();
+  
+  let html = '';
+  if (members.length === 0) {
+    html = '<tr><td colspan="3">No members found</td></tr>';
+  } else {
+    members.forEach(member => {
+      html += `
+        <tr>
+          <td>${member.firstName} ${member.lastName}</td>
+          <td>${member.phoneNumber}</td>
+          <td>
+            <button class="btn btn-sm" 
+                    hx-get="/partials/member-form?id=${member._id}" 
+                    hx-target="#member-form-container"
+                    hx-swap="innerHTML">Edit</button>
+            <button class="btn btn-sm btn-danger" 
+                    hx-delete="/api/members/${member._id}" 
+                    hx-confirm="Are you sure you want to delete this member?"
+                    hx-target="#members-list"
+                    hx-swap="innerHTML">Delete</button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+  
+  res.send(html);
 });
 //#endregion
 
 // GROUPS SECTION -------------------------------------------
 // CREATE OR UPDATE GROUP
 //#region
-app.post('/group', async (req, res) => {
+app.post('/api/group', async (req, res) => {
   try {
     const { id, name, year, memberIds } = req.body;  // Expecting memberIds as an array of ObjectIds
 
@@ -312,7 +351,7 @@ app.post('/group', async (req, res) => {
 
 // GET ALL GROUPS
 //#region
-app.get('/groups', async (req, res) => {
+app.get('/api/groups', async (req, res) => {
   try {
     const groups = await Group.find().populate('members'); // Fetch all groups and populate members
     res.status(200).json(groups);
@@ -329,7 +368,7 @@ app.get('/groups', async (req, res) => {
  * Endpoint to get the notification for the latest match in a group
  * POST /match/notification/:groupId
  */
-app.post('/match/notification/:groupId', async (req, res) => {
+app.post('/api/match/notification/:groupId', async (req, res) => {
   try {
     const { groupId } = req.params;
 
@@ -466,21 +505,23 @@ app.post('/match/notification/:groupId', async (req, res) => {
 //#endregion
 
 // Temp Interface
-app.get('/', (req, res) => {
-  res.send(`
-    <html>
-      <head>
-        <title>Navigation</title>
-      </head>
-      <body>
-        <h1>Welcome!</h1>
-        <p>Click a button to navigate:</p>
-        <button onclick="location.href='/matches'">See Matches</button>
-        <button onclick="location.href='/members'">See Members</button>
-        <button onclick="location.href='/groups'">See Groups</button>
-      </body>
-    </html>
-  `);
+app.get('/api/', (req, res) => {
+  // res.send(`
+  //   <html>
+  //     <head>
+  //       <title>Navigation</title>
+  //     </head>
+  //     <body>
+  //       <h1>Welcome!</h1>
+  //       <p>Click a button to navigate:</p>
+  //       <button onclick="location.href='/api/matches'">See Matches</button>
+  //       <button onclick="location.href='/api/members'">See Members</button>
+  //       <button onclick="location.href='/api/groups'">See Groups</button>
+  //     </body>
+  //   </html>
+  // `);
+    res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
+  
 });
 
 app.listen(port, () => {

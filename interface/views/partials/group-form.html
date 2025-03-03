@@ -1,0 +1,38 @@
+<div class="panel">
+    <h3>{{#if group}}Edit{{else}}Create{{/if}} Group</h3>
+    
+    <form hx-{{#if group}}put="http://main:3000/api/groups/{{group._id}}"{{else}}post="http://main:3000/api/groups"{{/if}}
+          hx-target="#groups-list"
+          hx-swap="innerHTML">
+      
+      <div class="form-group">
+        <label for="name">Group Name</label>
+        <input type="text" id="name" name="name" class="form-control" value="{{group.name}}" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="year">Year</label>
+        <input type="text" id="year" name="year" class="form-control" value="{{#if group}}{{group.year}}{{else}}2025{{/if}}" required>
+      </div>
+      
+      <div class="form-group">
+        <label>Select Members</label>
+        <div class="member-select">
+          {{#each allMembers}}
+          <div class="member-item">
+            <label>
+              <input type="checkbox" name="members[]" value="{{_id}}" 
+                    {{#if isSelected}}checked{{/if}}>
+              {{firstName}} {{lastName}}
+            </label>
+          </div>
+          {{/each}}
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <button type="submit" class="btn btn-success">Save Group</button>
+        <button type="button" class="btn" onclick="document.getElementById('group-form-container').innerHTML = ''">Cancel</button>
+      </div>
+    </form>
+  </div>

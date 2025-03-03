@@ -1,0 +1,90 @@
+<div class="panel">
+    <h3>Generate Matches</h3>
+    
+    <div class="form-group">
+      <label for="groupSelect">Select Group</label>
+      <select id="groupSelect" class="form-control" 
+              hx-get="http://main:3000/api/groups/:value" 
+              hx-target="#selected-group-info"
+              hx-swap="innerHTML"
+              hx-trigger="change">
+        <option value="">-- Select a Group --</option>
+        {{#each groups}}
+        <option value="{{_id}}">{{name}} ({{year}})</option>
+        {{/each}}
+      </select>
+    </div>
+    
+    <div id="selected-group-info"></div>
+    
+    <div class="panel" id="match-actions" style="display: none;">
+      <div class="form-group">
+        <button class="btn btn-success" 
+                hx-post="http://main:3000/api/match/generate/:groupId" 
+                hx-target="#match-results"
+                hx-swap="innerHTML">
+          Generate New Matches
+        </button>
+        
+        <button class="btn" 
+                hx-get="http://main:3000/api/match/:groupId" 
+                hx-target="#match-results"
+                hx-swap="innerHTML">
+          View Current Matches
+        </button>
+      </div>
+      
+      <div id="match-results"></div>
+      
+      <div class="form-group" id="notification-panel" style="display: none; margin-top: 20px;">
+        <h3>Send Notifications</h3>
+        <button class="btn btn-success" 
+                hx-post="http://main:3000/match/notification/:groupId" 
+                hx-target="#notification-results"
+                hx-swap="innerHTML">
+          Prepare Notifications
+        </button>
+      </div>
+      
+      <div id="notification-results"></div>
+    </div>
+  </div>
+  
+  <script>
+    // This script will be loaded with the partial
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+      // Show match actions when a group is selected
+      if (event.detail.target.id === 'selected-group-info' && event.detail.target.innerHTML !== '') {
+        document.getElementById('match-actions').style.display = 'block';
+        
+        // Extract group ID and update the buttons
+        const groupId = document.getElementById('groupSelect').value;
+        const matchButtons = document.querySelectorAll('#match-actions button');
+        
+        matchButtons.forEach(button => {
+          const hxAttr = button.getAttribute('hx-post') || button.getAttribute('hx-get');
+          if (hxAttr && hxAttr.includes(':groupId')) {
+            const newAttr = hxAttr.replace(':groupId', groupId);
+            if (button.getAttribute('hx-post')) {
+              button.setAttribute('hx-post', newAttr);
+            } else {
+              button.setAttribute('hx-get', newAttr);
+            }
+          }
+        });
+      }
+      
+      // Show notification panel when matches are displayed
+      if (event.detail.target.id === 'match-results' && event.detail.target.innerHTML !== '') {
+        document.getElementById('notification-panel').style.display = 'block';
+        
+        // Update notification button
+        const groupId = document.getElementById('groupSelect').value;
+        const notifyButton = document.querySelector('#notification-panel button');
+        const hxAttr = notifyButton.getAttribute('hx-post');
+        if (hxAttr && hxAttr.includes(':groupId')) {
+          notifyButton.setAttribute('hx-post', hxAttr.replace(':groupId', groupId));
+        }
+      }
+    });
+  </script>
