@@ -13,8 +13,7 @@ RUN npm install
 # Copy the rest of the application files
 COPY . .
 
-# Expose port 3000 (the port your app will run on)
+# Expose port 3000
 EXPOSE 3000
 
-# Command to start the Node.js app *Command in docker-compose.yml
-CMD ["node", "main/main.js"]
+# CMD is overridden by docker-compose.yml, so we don't need it here

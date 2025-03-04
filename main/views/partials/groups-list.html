@@ -1,0 +1,33 @@
+<table class="table">
+    <thead>
+      <tr>
+        <th>Group Name</th>
+        <th>Year</th>
+        <th>Members</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- This content will be replaced by the API response -->
+      {{#each groups}}
+      <tr>
+        <td>{{name}}</td>
+        <td>{{year}}</td>
+        <td>{{members.length}} members</td>
+        <td>{{#if archived}}Archived{{else}}Active{{/if}}</td>
+        <td>
+          <button class="btn btn-sm" 
+                  hx-get="http://main:3000/api/groups/{{_id}}" 
+                  hx-target="#group-form-container"
+                  hx-swap="innerHTML">Edit</button>
+          <button class="btn btn-sm btn-danger" 
+                  hx-delete="http://main:3000/api/groups/{{_id}}" 
+                  hx-confirm="Are you sure you want to delete this group?"
+                  hx-target="#groups-list"
+                  hx-swap="innerHTML">Delete</button>
+        </td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>

@@ -1,0 +1,28 @@
+<div class="panel">
+    <h3>{{#if member}}Edit{{else}}Add{{/if}} Member</h3>
+    
+    <form hx-{{#if member}}put="http://main:3000/api/members/{{member._id}}"{{else}}post="http://main:3000/api/members"{{/if}}
+          hx-target="#members-list"
+          hx-swap="innerHTML">
+      
+      <div class="form-group">
+        <label for="firstName">First Name</label>
+        <input type="text" id="firstName" name="firstName" class="form-control" value="{{member.firstName}}" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="lastName">Last Name</label>
+        <input type="text" id="lastName" name="lastName" class="form-control" value="{{member.lastName}}" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="phoneNumber">Phone Number</label>
+        <input type="tel" id="phoneNumber" name="phoneNumber" class="form-control" value="{{member.phoneNumber}}" required>
+      </div>
+      
+      <div class="form-group">
+        <button type="submit" class="btn btn-success">Save Member</button>
+        <button type="button" class="btn" onclick="document.getElementById('member-form-container').innerHTML = ''">Cancel</button>
+      </div>
+    </form>
+  </div>
