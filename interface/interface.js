@@ -10,7 +10,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // API base URL
-const API_URL = 'http://main:3000/api';
+const API_URL = 'http://localhost:3002/api';
 
 // Main dashboard
 app.get('/', (req, res) => {
@@ -61,23 +61,57 @@ app.get('/partials/members-list', async (req, res) => {
 });
 
 // Member form partial with data (for editing)
+// In interface/interface.js
 app.get('/partials/member-form', async (req, res) => {
-  try {
-    const memberId = req.query.id;
-    let member = null;
-    
-    if (memberId) {
-      // Fetch the member from the API if we're editing
-      const response = await axios.get(`${API_URL}/members/${memberId}`);
+  const memberId = req.query.id;
+  let member = null;
+  
+  if (memberId) {
+    try {
+      // Fetch member data from the API if editing
+      const response = await axios.get(`http://localhost:3001/api/members/${memberId}`);
       member = response.data;
+    } catch (error) {
+      console.error('Error fetching member:', error);
     }
-    
-    // Serve the appropriate form with member data if available
-    res.sendFile(path.join(__dirname, 'views', 'partials', 'member-form.html'));
-    // In a real implementation, you'd need to process the template to include member data
-  } catch (error) {
-    res.status(500).send(`<div>Error: ${error.message}</div>`);
   }
+  
+  // Return HTML form (no Handlebars syntax)
+  const html = `
+    <div class="panel">
+      <h3>${member ? 'Edit' : 'Add'} Member</h3>
+      
+      <form ${member ? 
+        `hx-put="http://localhost:3001/api/members/${member._id}"` : 
+        'hx-post="http://localhost:3001/api/members"'
+      }
+            hx-target="#members-list"
+            hx-swap="innerHTML">
+        
+        <div class="form-group">
+          <label for="firstName">First Name</label>
+          <input type="text" id="firstName" name="firstName" class="form-control" value="${member ? member.firstName : ''}" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="lastName">Last Name</label>
+          <input type="text" id="lastName" name="lastName" class="form-control" value="${member ? member.lastName : ''}" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="phoneNumber">Phone Number</label>
+          <input type="tel" id="phoneNumber" name="phoneNumber" class="form-control" value="${member ? member.phoneNumber : ''}" required>
+        </div>
+        
+        <div class="form-group">
+          <button type="submit" class="btn btn-success">Save Member</button>
+          <button type="button" class="btn" onclick="document.getElementById('member-form-container').innerHTML = ''">Cancel</button>
+        </div>
+      </form>
+    </div>
+  `;
+  
+  res.send(html);
 });
 
 // Similar endpoints for other partials

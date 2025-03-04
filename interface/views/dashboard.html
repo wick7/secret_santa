@@ -153,7 +153,7 @@
     <div class="tab-content active" id="content-members">
       <div class="panel">
         <div class="panel-header">
-          <h2>Memberssss</h2>
+          <h2>Members</h2>
           <button class="btn" hx-get="/partials/member-form" hx-target="#member-form-container" hx-swap="innerHTML">Add New Member</button>
         </div>
         
@@ -175,7 +175,7 @@
         
         <div id="group-form-container"></div>
         
-        <div id="groups-list" hx-get="http://localhost:3001/api/groups" hx-trigger="load" hx-swap="innerHTML">
+        <div id="groups-list" hx-get="http://localhost:3001/api/groups-html" hx-trigger="load" hx-swap="innerHTML">
           <p>Loading groups...</p>
         </div>
       </div>
@@ -188,11 +188,12 @@
           <h2>Secret Santa Matches</h2>
         </div>
         
-        <div id="match-panel" hx-get="/partials/match-panel" hx-trigger="load" hx-swap="innerHTML">
-          <p>Loading match panel...</p>
+        <div id="matches-list" hx-get="http://localhost:3001/api/matches-html" hx-trigger="load" hx-swap="innerHTML">
+          <p>Loading matches...</p>
         </div>
       </div>
     </div>
+    <div id="match-details-container"></div>
   </div>
   
   <script>

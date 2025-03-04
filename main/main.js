@@ -180,6 +180,93 @@ app.get('/api/matches', async (req, res) => {
 });
 //#endregion
 
+// MATCH VIEW
+//#region 
+// In main.js
+app.get('/api/matches-html', async (req, res) => {
+  try {
+    // Get the groupId from query parameters, if provided
+    const { groupId } = req.query;
+    
+    let matches;
+    if (groupId) {
+      // If groupId is provided, get matches for that group
+      matches = await Match.find({ groupId })
+        .populate('secretSantaId')
+        .populate('gifteeId')
+        .populate('groupId');
+    } else {
+      // Otherwise get all matches
+      matches = await Match.find()
+        .populate('secretSantaId')
+        .populate('gifteeId')
+        .populate('groupId');
+    }
+    
+    let html = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Group</th>
+            <th>Secret Santa</th>
+            <th>Giftee</th>
+            <th>Date Matched</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    if (matches.length === 0) {
+      html += '<tr><td colspan="6">No matches found</td></tr>';
+    } else {
+      matches.forEach(match => {
+        const secretSanta = match.secretSantaId;
+        const giftee = match.gifteeId;
+        const group = match.groupId;
+        
+        html += `
+          <tr>
+            <td>${group ? group.name + ' (' + group.year + ')' : 'Unknown Group'}</td>
+            <td>${secretSanta ? secretSanta.firstName + ' ' + secretSanta.lastName : 'Unknown'}</td>
+            <td>${giftee ? giftee.firstName + ' ' + giftee.lastName : 'Unknown'}</td>
+            <td>${new Date(match.dateMatched).toLocaleDateString()}</td>
+            <td>${match.archived ? 'Archived' : 'Active'}</td>
+            <td>
+              <button class="btn btn-sm" 
+                      hx-get="/api/match-details/${match._id}" 
+                      hx-target="#match-details-container"
+                      hx-swap="innerHTML">View Details</button>
+              ${!match.archived ? `
+                <button class="btn btn-sm btn-success" 
+                        hx-post="/api/matches/${match._id}/notify" 
+                        hx-target="#match-details-container"
+                        hx-swap="innerHTML">Notify</button>
+              ` : ''}
+              <button class="btn btn-sm btn-danger" 
+                      hx-delete="/api/matches/${match._id}" 
+                      hx-confirm="Are you sure you want to delete this match?"
+                      hx-target="#matches-list"
+                      hx-swap="innerHTML">Delete</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
+    
+    html += `
+        </tbody>
+      </table>
+    `;
+    
+    res.send(html);
+  } catch (error) {
+    res.status(500).send(`<div>Error loading matches: ${error.message}</div>`);
+  }
+});
+//#endregion
+
 // MEMBERS SECTION -------------------------------------------
 // ADD MEMBER
 //#region
@@ -270,21 +357,39 @@ app.get('/api/members', async (req, res) => {
   res.json(members);
 });
 
-// In main.js
+// MEMBERS VIEW
 app.get('/api/members-html', async (req, res) => {
   const members = await Member.find();
   
-  let html = '';
+  let html = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone Number</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
   if (members.length === 0) {
-    html = '<tr><td colspan="3">No members found</td></tr>';
+    html += '<tr><td colspan="3">No members found</td></tr>';
   } else {
     members.forEach(member => {
+      // Format phone number
+      let formattedPhone = member.phoneNumber;
+      if (formattedPhone && formattedPhone.length === 10) {
+        formattedPhone = `(${formattedPhone.substring(0, 3)}) ${formattedPhone.substring(3, 6)}-${formattedPhone.substring(6)}`;
+      }
+      
       html += `
         <tr>
           <td>${member.firstName} ${member.lastName}</td>
-          <td>${member.phoneNumber}</td>
-          <td>
+          <td>${formattedPhone || 'N/A'}</td>
+          <td style="min-width: 150px;">
             <button class="btn btn-sm" 
+                    style="margin-right: 5px;"
                     hx-get="/partials/member-form?id=${member._id}" 
                     hx-target="#member-form-container"
                     hx-swap="innerHTML">Edit</button>
@@ -299,7 +404,74 @@ app.get('/api/members-html', async (req, res) => {
     });
   }
   
+  html += `
+      </tbody>
+    </table>
+  `;
+  
   res.send(html);
+});
+
+// In interface/interface.js
+app.get('/partials/member-form', async (req, res) => {
+  try {
+    const memberId = req.query.id;
+    let member = null;
+    
+    if (memberId) {
+      // Fetch member data from the API if editing
+      const response = await axios.get(`http://localhost:3001/api/members/${memberId}`);
+      member = response.data;
+      
+      console.log("Fetched member data:", member); // For debugging
+    }
+    
+    // Return HTML form with populated values if member exists
+    const html = `
+      <div class="panel">
+        <h3>${member ? 'Edit' : 'Add'} Member</h3>
+        
+        <form ${member ? 
+          `hx-put="/api/members/${member._id}"` : 
+          'hx-post="/api/members"'
+        }
+              hx-target="#members-list"
+              hx-swap="innerHTML">
+          
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" class="form-control" value="${member ? member.firstName : ''}" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" class="form-control" value="${member ? member.lastName : ''}" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="phoneNumber">Phone Number</label>
+            <input type="tel" id="phoneNumber" name="phoneNumber" class="form-control" value="${member ? member.phoneNumber : ''}" required>
+          </div>
+          
+          <div class="form-group">
+            <button type="submit" class="btn btn-success">Save Member</button>
+            <button type="button" class="btn" onclick="document.getElementById('member-form-container').innerHTML = ''">Cancel</button>
+          </div>
+        </form>
+      </div>
+    `;
+    
+    res.send(html);
+  } catch (error) {
+    console.error("Error in member form:", error);
+    res.status(500).send(`
+      <div class="panel">
+        <h3>Error</h3>
+        <p>Failed to load member form: ${error.message}</p>
+        <button class="btn" onclick="document.getElementById('member-form-container').innerHTML = ''">Close</button>
+      </div>
+    `);
+  }
 });
 //#endregion
 
@@ -360,6 +532,64 @@ app.get('/api/groups', async (req, res) => {
     res.status(500).json({ error: 'Error fetching groups' });
   }
 });
+
+// GROUPS VIEW
+//#region 
+app.get('/api/groups-html', async (req, res) => {
+  try {
+    const groups = await Group.find().populate('members');
+    
+    let html = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Group Name</th>
+            <th>Year</th>
+            <th>Members</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    if (groups.length === 0) {
+      html += '<tr><td colspan="5">No groups found</td></tr>';
+    } else {
+      groups.forEach(group => {
+        html += `
+          <tr>
+            <td>${group.name}</td>
+            <td>${group.year}</td>
+            <td>${group.members.length} members</td>
+            <td>${group.archived ? 'Archived' : 'Active'}</td>
+            <td>
+              <button class="btn btn-sm" 
+                      hx-get="/partials/group-form?id=${group._id}" 
+                      hx-target="#group-form-container"
+                      hx-swap="innerHTML">Edit</button>
+              <button class="btn btn-sm btn-danger" 
+                      hx-delete="/api/groups/${group._id}" 
+                      hx-confirm="Are you sure you want to delete this group?"
+                      hx-target="#groups-list"
+                      hx-swap="innerHTML">Delete</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
+    
+    html += `
+        </tbody>
+      </table>
+    `;
+    
+    res.send(html);
+  } catch (error) {
+    res.status(500).send(`<div>Error loading groups: ${error.message}</div>`);
+  }
+});
+//#endregion
 //#endregion
 
 // Notify Matches
