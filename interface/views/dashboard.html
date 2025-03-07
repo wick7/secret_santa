@@ -135,6 +135,34 @@
       margin-bottom: 5px;
       border-bottom: 1px solid #eee;
     }
+    /* Loading indicator styles */
+    .htmx-indicator {
+      display: none;
+      margin: 10px 0;
+    }
+    .htmx-request .htmx-indicator {
+      display: block;
+    }
+    .spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 10px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error-message {
+      padding: 10px;
+      background-color: #f8d7da;
+      color: #721c24;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
   </style>
 </head>
 <body>
@@ -154,13 +182,18 @@
       <div class="panel">
         <div class="panel-header">
           <h2>Members</h2>
-          <button class="btn" hx-get="/partials/member-form" hx-target="#member-form-container" hx-swap="innerHTML">Add New Member</button>
+          <button class="btn" hx-get="/partials/member-form" hx-target="#member-form-container" hx-swap="innerHTML">
+            Add New Member
+          </button>
         </div>
         
         <div id="member-form-container"></div>
 
-        <div id="members-list" hx-get="http://localhost:3001/api/members-html" hx-trigger="load" hx-swap="innerHTML">
-          <p>Loading members...</p>
+        <div id="members-list" hx-get="/partials/members-list" hx-trigger="load" hx-swap="innerHTML">
+          <div class="htmx-indicator">
+            <p>Loading members...</p>
+            <div class="spinner"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -175,8 +208,11 @@
         
         <div id="group-form-container"></div>
         
-        <div id="groups-list" hx-get="http://localhost:3001/api/groups-html" hx-trigger="load" hx-swap="innerHTML">
-          <p>Loading groups...</p>
+        <div id="groups-list" hx-get="/partials/groups-list" hx-trigger="load" hx-swap="innerHTML">
+          <div class="htmx-indicator">
+            <p>Loading groups...</p>
+            <div class="spinner"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -188,8 +224,11 @@
           <h2>Secret Santa Matches</h2>
         </div>
         
-        <div id="matches-list" hx-get="http://localhost:3001/api/matches-html" hx-trigger="load" hx-swap="innerHTML">
-          <p>Loading matches...</p>
+        <div id="matches-list" hx-get="/partials/matches-list" hx-trigger="load" hx-swap="innerHTML">
+          <div class="htmx-indicator">
+            <p>Loading matches...</p>
+            <div class="spinner"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -223,6 +262,22 @@
           alert.style.display = 'none';
         }, 5000);
       });
+    });
+    
+    // Handle HTMX errors
+    document.body.addEventListener('htmx:responseError', function(event) {
+      const targetElement = event.detail.target;
+      const errorResponse = event.detail.xhr.responseText;
+      
+      // Show error in the target element
+      if (targetElement && errorResponse) {
+        targetElement.innerHTML = `
+          <div class="alert alert-danger">
+            <h4>Error</h4>
+            <p>${errorResponse}</p>
+          </div>
+        `;
+      }
     });
   </script>
 </body>
