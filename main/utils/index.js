@@ -42,7 +42,7 @@ const generate_members = () => {
    * @param {string|mongoose.Types.ObjectId} groupId - The ID of the group these matches belong to
    * @returns {Promise<Object>} Result object with success status and details
    */
-  async function removeUnarchivedMatches(matchIds, groupId) {
+  const removeUnarchivedMatches = async (matchIds, groupId) => {
     try {
       // Validate inputs
       if (!Array.isArray(matchIds)) {
@@ -61,9 +61,9 @@ const generate_members = () => {
         };
       }
   
-      // Filter out match IDs that are not archived
+      // Filter out match IDs that are NOT archived (unarchived)
       const unarchivedMatchIds = matchIds
-        .filter(match => match.archived === false)
+        .filter(match => !match.archived) // Changed to find unarchived matches
         .map(match => match._id);
       
       if (unarchivedMatchIds.length === 0) {
@@ -99,6 +99,6 @@ const generate_members = () => {
         error: error
       };
     }
-  }
+  };
 
 module.exports = { groupBy, shuffleArray, generate_members, removeUnarchivedMatches };

@@ -1,3 +1,4 @@
+//#region Required & Setup 
 //Express Setup
 const express = require('express');
 const app = express();
@@ -5,28 +6,18 @@ const cors = require('cors');
 const port = 3000;
 
 
-app.use(cors({
-  origin: ['http://interface:3000', 'http://localhost:3002'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE']
-}));
-
-app.use('/api/proxy', createProxyMiddleware({
-  target: 'http://main:3000', // Use Docker service name
-  // ...
-}));
-
 //Libraries
 const { format } = require('date-fns');
 const mongoose = require('mongoose');
 
 //Utils
 const { shuffleArray } = require('./utils/index');
+const { removeUnarchivedMatches } = require('./utils/index');
 
 // Models
 const Member = require('./models/Member');
 const Match = require('./models/Match');
 const Group = require('./models/Group');
-
 
 // Mongo
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/secret_santa';
@@ -40,11 +31,10 @@ mongoose.connection.once('open', () => {
 // Middleware
 app.use(express.json());  // Enables JSON body parsing
 app.use(express.urlencoded({ extended: true })); 
+//#endregion
 
-
-// MATCHES SECTION -------------------------------------------
-// CREATE MATCHES
-//#region
+//#region MATCHES SECTION -------------------------------------------
+//#region CREATE MATCHES
 app.post('/api/match/:groupId', async (req, res) => {
   try {
     const { groupId } = req.params; // Get groupId from URL params
@@ -62,7 +52,7 @@ app.post('/api/match/:groupId', async (req, res) => {
     }
 
     if (group.matchIds.length > 0) {
-      removeUnarchivedMatches(group.matchIds, group._id);
+      await removeUnarchivedMatches(group.matchIds, group._id);
     }
 
     const members = group.members;  // List of members in this group
@@ -91,10 +81,6 @@ app.post('/api/match/:groupId', async (req, res) => {
           return res.status(400).json({ error: "Could not find a valid match. Please try again." });
         }
       }
-
-      // Add the giftee to the secretSanta's lastGifteeMatch array
-      // NOTE THIS NEEDS TO MOVE TO THE NOTIFICATION ENDPOINT
-      secretSanta.lastGifteeMatch.push(giftee._id);
 
       // Create the match
       const newMatch = new Match({
@@ -130,8 +116,7 @@ app.post('/api/match/:groupId', async (req, res) => {
 });
 //#endregion
 
-// GET MATCHES
-//#region
+//#region GET MATCHES
 app.get('/api/matches', async (req, res) => {
   try {
     const { groupId, includeArchived } = req.query;  // Get the groupId and includeArchived from query parameters
@@ -182,11 +167,10 @@ app.get('/api/matches', async (req, res) => {
   }
 });
 //#endregion
+//#endregion
 
-
-// MEMBERS SECTION -------------------------------------------
-// ADD OR UPDATE MEMBER
-//#region
+//#region MEMBERS SECTION -------------------------------------------
+//#region CREATE OR UPDATE MEMBER
 app.post('/api/member', async (req, res) => {
   try {
     const members = req.body;  // Expecting an array of member objects
@@ -248,8 +232,14 @@ app.post('/api/member', async (req, res) => {
 });
 //#endregion
 
-// MEMBER UPDATE LAST GIFTEE MATCH
-//#region
+//#region GET ALL MEMBERS
+app.get('/api/members', async (req, res) => {
+  const members = await Member.find();
+  res.json(members);
+});
+//#endregion
+
+//#region MEMBER UPDATE LAST GIFTEE MATCH - Removes all but the most recent giftee match
 app.post('/api/update_lastGifteeMatch/:memberId', async (req, res) => {
   try {
     const { memberId } = req.params; // Get the memberId from the URL params
@@ -288,20 +278,10 @@ app.post('/api/update_lastGifteeMatch/:memberId', async (req, res) => {
   }
 });
 //#endregion
+//#endregion
 
-// GET ALL MEMBERS
-//#region
-app.get('/api/members', async (req, res) => {
-  const members = await Member.find();
-  res.json(members);
-});
-
-
-
-
-// GROUPS SECTION -------------------------------------------
-// CREATE OR UPDATE GROUP
-//#region
+//#region GROUPS SECTION -------------------------------------------
+//#region CREATE OR UPDATE GROUP
 app.post('/api/group', async (req, res) => {
   try {
     const { id, name, year, memberIds } = req.body;  // Expecting memberIds as an array of ObjectIds
@@ -345,8 +325,7 @@ app.post('/api/group', async (req, res) => {
 });
 //#endregion
 
-// GET ALL GROUPS
-//#region
+//#region GET ALL GROUPS
 app.get('/api/groups', async (req, res) => {
   try {
     const groups = await Group.find().populate('members'); // Fetch all groups and populate members
@@ -356,15 +335,11 @@ app.get('/api/groups', async (req, res) => {
     res.status(500).json({ error: 'Error fetching groups' });
   }
 });
-
+//#endregion
 //#endregion
 
-// Notify Matches
-//#region
-/**
- * Endpoint to get the notification for the latest match in a group
- * POST /match/notification/:groupId
- */
+//#region SPECIAL -------------------------------------
+//#region NOTIFY MATCHES
 app.post('/api/match/notification/:groupId', async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -636,6 +611,7 @@ app.delete('/api/group/:id', async (req, res) => {
     });
   }
 });
+//#endregion
 //#endregion
 
 app.listen(port, () => {
