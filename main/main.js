@@ -61,9 +61,6 @@ app.post('/api/match/:groupId', async (req, res) => {
       return res.status(400).json({ error: "The group is archived. No further action can be taken on it." });
     }
 
-    // CHECK IF GROUP ALREADY HAS MATCHES, IF SO RETURN 400 AND SHOW MATCHES
-    // SUGGEST OTHER OPTIONS IF THEY WANT TO RE-RUN MATCHES
-
     if (group.matchIds.length > 0) {
       removeUnarchivedMatches(group.matchIds, group._id);
     }
@@ -140,7 +137,7 @@ app.get('/api/matches', async (req, res) => {
     const { groupId, includeArchived } = req.query;  // Get the groupId and includeArchived from query parameters
 
     if (!groupId) {
-      return res.status(400).send('Group ID is required');
+      return res.status(400).json({ error: 'Group ID is required' });
     }
 
     // Build the query to include or exclude archived matches
@@ -153,43 +150,44 @@ app.get('/api/matches', async (req, res) => {
 
     // Fetch matches for the specific groupId and populate the secretSantaId and gifteeId
     const matches = await Match.find(query)
-      .populate('secretSantaId', 'firstName')
-      .populate('gifteeId', 'firstName');
+      .populate('secretSantaId', 'firstName lastName')
+      .populate('gifteeId', 'firstName lastName');
 
-    if (matches.length) {
-      res.send(`
-        <html>
-          <body>
-            <h1>Match Results</h1>
-            ${matches
-              .map(
-                (match) => `
-                  <div>
-                    <strong>Secret Santa:</strong> ${match.secretSantaId.firstName} <br>
-                    <strong>Giftee:</strong> ${match.gifteeId.firstName} <br>
-                    <strong>Date Matched:</strong> ${format(match.dateMatched, 'MM-dd-yyyy')}
-                  </div><hr>
-                `
-              )
-              .join('')}
-          </body>
-        </html>
-      `);
-    } else {
-      res.send('No matches found for this group');
-    }
+    // Format the response data
+    const formattedMatches = matches.map(match => ({
+      id: match._id,
+      secretSanta: {
+        id: match.secretSantaId._id,
+        firstName: match.secretSantaId.firstName,
+        lastName: match.secretSantaId.lastName
+      },
+      giftee: {
+        id: match.gifteeId._id,
+        firstName: match.gifteeId.firstName,
+        lastName: match.gifteeId.lastName
+      },
+      groupId: match.groupId,
+      dateMatched: match.dateMatched,
+      archived: match.archived
+    }));
+
+    res.json({
+      count: matches.length,
+      matches: formattedMatches
+    });
+    
   } catch (err) {
     console.error('Error fetching matches:', err);
-    res.status(500).send('Error fetching matches');
+    res.status(500).json({ error: 'Error fetching matches' });
   }
 });
 //#endregion
 
 
 // MEMBERS SECTION -------------------------------------------
-// ADD MEMBER
+// ADD OR UPDATE MEMBER
 //#region
-app.post('/api/add_member', async (req, res) => {
+app.post('/api/member', async (req, res) => {
   try {
     const members = req.body;  // Expecting an array of member objects
 
@@ -197,33 +195,55 @@ app.post('/api/add_member', async (req, res) => {
       return res.status(400).send('Request body must be an array of members');
     }
 
+    const results = [];
+
     // Loop through each member object in the array
     for (const memberData of members) {
-      const { firstName, lastName, phoneNumber } = memberData;
+      const { id, firstName, lastName, phoneNumber } = memberData;
 
       // Check if all required fields are present
       if (!firstName || !lastName || !phoneNumber) {
         return res.status(400).send('Missing required fields in one or more member objects');
       }
 
-      // Create a new member object
-      const newMember = new Member({
-        firstName,
-        lastName,
-        phoneNumber,
-        lastGifteeMatch: [],
-      });
+      if (id) {
+        // If ID exists, update the existing member
+        const updatedMember = await Member.findByIdAndUpdate(
+          id,
+          { firstName, lastName, phoneNumber },
+          { new: true, runValidators: true }
+        );
 
-      // Save the member to the database
-      await newMember.save();
+        if (!updatedMember) {
+          results.push({ success: false, message: `Member with ID ${id} not found` });
+          continue;
+        }
+
+        results.push({ success: true, message: 'Member updated', member: updatedMember });
+      } else {
+        // Create a new member object if no ID is provided
+        const newMember = new Member({
+          firstName,
+          lastName,
+          phoneNumber,
+          lastGifteeMatch: [],
+        });
+
+        // Save the member to the database
+        await newMember.save();
+        results.push({ success: true, message: 'Member added', member: newMember });
+      }
     }
 
-    // Respond with success message
-    res.status(201).send('Members added successfully!');
+    // Respond with success message and results
+    res.status(201).json({
+      message: 'Members processed successfully',
+      results
+    });
 
   } catch (err) {
     console.error(err);
-    res.status(500).send('Error adding members');
+    res.status(500).send('Error processing members');
   }
 });
 //#endregion
@@ -374,132 +394,249 @@ app.post('/api/match/notification/:groupId', async (req, res) => {
       });
     }
 
-    // Get the latest match ID (assuming last item in array is most recent)
-    const latestMatchId = group.matchIds[group.matchIds.length - 1];
-
-    // Find the match and confirm it's not archived
-    const match = await Match.findById(latestMatchId);
-    if (!match) {
-      return res.status(404).json({
-        success: false,
-        message: 'Latest match not found'
-      });
-    }
-
-    if (match.archived) {
+    // If group is already archived, return an error
+    if (group.archived) {
       return res.status(400).json({
         success: false,
-        message: 'Latest match is already archived (notification already sent)'
+        message: 'Group is already archived (notifications already sent)'
       });
     }
 
-    // Get the secret Santa and giftee details
-    const secretSanta = await Member.findById(match.secretSantaId);
-    const giftee = await Member.findById(match.gifteeId);
+    // Find all non-archived matches for this group
+    const matches = await Match.find({
+      _id: { $in: group.matchIds },
+      archived: false
+    });
 
-    if (!secretSanta || !giftee) {
-      return res.status(404).json({
+    if (matches.length === 0) {
+      return res.status(400).json({
         success: false,
-        message: 'Secret Santa or giftee member not found'
+        message: 'All matches in this group are already archived'
       });
     }
-    
-    // ARCHIVE MATCH AND POPULATE MEMBER WHO IS SECRETE SANTA WITH GIFTEE'S ID
 
-    // Generate text message string
-    const messageText = `Hi ${secretSanta.firstName}, you are the Secret Santa for ${giftee.firstName} ${giftee.lastName}! Please refer to the Excel spreadsheet for gift ideas. Happy gifting!`;
+    // Set up Twilio client with your credentials
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const client = require('twilio')(accountSid, authToken);
 
-    // Format response based on requested content type
-    if (req.headers.accept && req.headers.accept.includes('application/json')) {
-      // Return JSON if explicitly requested
-      return res.json({
-        success: true,
-        secretSanta: {
-          id: secretSanta._id,
-          name: `${secretSanta.firstName} ${secretSanta.lastName}`,
-          phoneNumber: secretSanta.phoneNumber
-        },
-        giftee: {
-          id: giftee._id,
-          name: `${giftee.firstName} ${giftee.lastName}`,
-          phoneNumber: giftee.phoneNumber
-        },
-        messageText,
-        matchId: match._id
-      });
-    } else {
-      // Return HTML by default
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Secret Santa Notification</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
-            .container { max-width: 800px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; border-radius: 5px; }
-            .details { margin-bottom: 20px; }
-            .message { background-color: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; }
-            h1 { color: #333; }
-            h2 { color: #555; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>Secret Santa Notification</h1>
-            
-            <div class="details">
-              <h2>Secret Santa</h2>
-              <p><strong>Name:</strong> ${secretSanta.firstName} ${secretSanta.lastName}</p>
-              <p><strong>Phone:</strong> ${secretSanta.phoneNumber}</p>
-            </div>
-            
-            <div class="details">
-              <h2>Giftee</h2>
-              <p><strong>Name:</strong> ${giftee.firstName} ${giftee.lastName}</p>
-              <p><strong>Phone:</strong> ${giftee.phoneNumber}</p>
-            </div>
-            
-            <div class="message">
-              <h2>Text Message</h2>
-              <p>${messageText}</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-      
-      return res.send(html);
+    // Prepare to store results of all notifications
+    const notificationResults = [];
+    const failedNotifications = [];
+
+    // Process each match and send notifications
+    for (const match of matches) {
+      // Get the secret Santa and giftee details
+      const secretSanta = await Member.findById(match.secretSantaId);
+      const giftee = await Member.findById(match.gifteeId);
+
+      if (!secretSanta || !giftee) {
+        console.log(`Match ${match._id} failed: Secret Santa or giftee member not found`);
+        failedNotifications.push({
+          matchId: match._id,
+          error: 'Secret Santa or giftee member not found'
+        });
+        continue;
+      }
+
+      // Generate text message string
+      const messageText = `Hi ${secretSanta.firstName}, you are the Secret Santa for ${giftee.firstName} ${giftee.lastName}! Please refer to the Excel spreadsheet for gift ideas. Happy gifting!`;
+
+      try {
+        // Try to send the text message via Twilio
+        const twilioMessage = await client.messages.create({
+          body: messageText,
+          from: twilioPhoneNumber,
+          to: secretSanta.phoneNumber
+        });
+
+        console.log(`Twilio message sent successfully for match ${match._id}:`, twilioMessage.sid);
+
+        // ONLY after successful text message:
+        // 1. Update the match to archived status
+        match.archived = true;
+        await match.save();
+
+        // 2. Update the secretSanta's lastGifteeMatch array by adding giftee's ID
+        await Member.findByIdAndUpdate(
+          secretSanta._id,
+          { $push: { lastGifteeMatch: giftee._id } }
+        );
+
+        // 3. Add successful notification to results
+        notificationResults.push({
+          success: true,
+          twilioMessageSid: twilioMessage.sid,
+          secretSanta: {
+            id: secretSanta._id,
+            name: `${secretSanta.firstName} ${secretSanta.lastName}`,
+            phoneNumber: secretSanta.phoneNumber
+          },
+          giftee: {
+            id: giftee._id,
+            name: `${giftee.firstName} ${giftee.lastName}`
+          },
+          messageText,
+          matchId: match._id,
+          matchArchived: true,
+          memberUpdated: true
+        });
+      } catch (twilioError) {
+        // If Twilio message fails, DO NOT archive the match
+        console.error(`Error sending Twilio message for match ${match._id}:`, twilioError);
+        failedNotifications.push({
+          matchId: match._id,
+          secretSantaId: secretSanta._id,
+          gifteeId: giftee._id,
+          error: `Failed to send SMS: ${twilioError.message}`,
+          matchArchived: false,
+          memberUpdated: false
+        });
+      }
     }
+
+    // If all notifications were successful, archive the group
+    if (failedNotifications.length === 0 && notificationResults.length > 0) {
+      group.archived = true;
+      await group.save();
+    }
+
+    // Prepare response data
+    const responseData = {
+      success: notificationResults.length > 0,
+      totalMatches: matches.length,
+      successfulNotifications: notificationResults.length,
+      failedNotifications: failedNotifications.length,
+      groupArchived: group.archived,
+      notifications: notificationResults
+    };
+
+    // If there were failures, include them in the response
+    if (failedNotifications.length > 0) {
+      responseData.failures = failedNotifications;
+    }
+
+    // Always return JSON response
+    return res.json(responseData);
   } catch (error) {
-    console.error('Error generating match notification:', error);
+    console.error('Error generating match notifications:', error);
     return res.status(500).json({
       success: false,
-      message: 'Server error while generating match notification',
+      message: 'Server error while generating match notifications',
       error: error.message
     });
   }
 });
 //#endregion
 
-// Temp Interface
-app.get('/api/', (req, res) => {
-  // res.send(`
-  //   <html>
-  //     <head>
-  //       <title>Navigation</title>
-  //     </head>
-  //     <body>
-  //       <h1>Welcome!</h1>
-  //       <p>Click a button to navigate:</p>
-  //       <button onclick="location.href='/api/matches'">See Matches</button>
-  //       <button onclick="location.href='/api/members'">See Members</button>
-  //       <button onclick="location.href='/api/groups'">See Groups</button>
-  //     </body>
-  //   </html>
-  // `);
-    res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
-  
+// DELETE GROUPS OR MEMBERS
+// DELETE MEMBER
+//#region
+app.delete('/api/member/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate id
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid member ID format'
+      });
+    }
+
+    // Find and delete the member
+    const deletedMember = await Member.findByIdAndDelete(id);
+
+    if (!deletedMember) {
+      return res.status(404).json({
+        success: false,
+        message: 'Member not found'
+      });
+    }
+
+    // Find any groups containing this member and remove the member
+    await Group.updateMany(
+      { members: id },
+      { $pull: { members: id } }
+    );
+
+    // Find any matches where this member is a secret santa or giftee
+    await Match.deleteMany({
+      $or: [
+        { secretSantaId: id },
+        { gifteeId: id }
+      ]
+    });
+
+    return res.json({
+      success: true,
+      message: 'Member deleted successfully',
+      member: deletedMember
+    });
+  } catch (error) {
+    console.error('Error deleting member:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while deleting member',
+      error: error.message
+    });
+  }
 });
+//#endregion
+
+// DELETE GROUP AND ITS MATCHES
+//#region
+app.delete('/api/group/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate id
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID format'
+      });
+    }
+
+    // Find the group first
+    const group = await Group.findById(id);
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Delete all matches associated with this group
+    let deletedMatchesCount = 0;
+    if (group.matchIds && group.matchIds.length > 0) {
+      const deleteResult = await Match.deleteMany({ 
+        _id: { $in: group.matchIds } 
+      });
+      deletedMatchesCount = deleteResult.deletedCount;
+    }
+
+    // Delete the group
+    const deletedGroup = await Group.findByIdAndDelete(id);
+
+    return res.json({
+      success: true,
+      message: 'Group and associated matches deleted successfully',
+      group: deletedGroup,
+      deletedMatchesCount
+    });
+  } catch (error) {
+    console.error('Error deleting group:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while deleting group',
+      error: error.message
+    });
+  }
+});
+//#endregion
 
 app.listen(port, () => {
   console.log(`Server is running at http://localhost:${port}`);
