@@ -10,6 +10,8 @@ services:
     command: ["node", "main/main.js"]
     networks:
       - app-network
+    env_file:
+      - .env
     environment:
       - MONGO_URI=mongodb://mongodb:27017/secret_santa
 
