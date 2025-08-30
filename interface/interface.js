@@ -35,6 +35,8 @@ app.get('/partials/members-list', async (req, res) => {
           <tr>
             <th>Name</th>
             <th>Phone Number</th>
+            <th>Email</th>
+            <th>Member ID</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -42,7 +44,7 @@ app.get('/partials/members-list', async (req, res) => {
     `;
     
     if (members.length === 0) {
-      html += '<tr><td colspan="3">No members found</td></tr>';
+      html += '<tr><td colspan="5">No members found</td></tr>';
     } else {
       members.forEach(member => {
         // Format phone number
@@ -53,19 +55,39 @@ app.get('/partials/members-list', async (req, res) => {
         
         html += `
           <tr>
-            <td>${member.firstName} ${member.lastName}</td>
-            <td>${formattedPhone || 'N/A'}</td>
-            <td style="min-width: 150px;">
-              <button class="btn btn-sm" 
-                      style="margin-right: 5px;"
-                      hx-get="/partials/member-form?id=${member._id}" 
-                      hx-target="#member-form-container"
-                      hx-swap="innerHTML">Edit</button>
-              <button class="btn btn-sm btn-danger" 
-                      hx-delete="/api/proxy/members/${member._id}" 
-                      hx-confirm="Are you sure you want to delete this member?"
-                      hx-target="#members-list"
-                      hx-swap="innerHTML">Delete</button>
+            <td>
+              <div class="member-info">
+                <strong>${member.firstName} ${member.lastName}</strong>
+              </div>
+            </td>
+            <td>
+              ${member.phoneNumber ? formattedPhone : '<span class="text-muted">No phone</span>'}
+            </td>
+            <td>
+              ${member.email || '<span class="text-muted">No email</span>'}
+            </td>
+            <td>
+              <div class="guid-display">
+                <code>${member._id}</code>
+                <button class="btn btn-sm btn-info" 
+                        onclick="copyGuid('${member._id}')" 
+                        title="Copy Member ID">
+                  📋
+                </button>
+              </div>
+            </td>
+            <td>
+              <div class="member-actions">
+                <button class="btn btn-sm" 
+                        hx-get="/partials/member-form?id=${member._id}" 
+                        hx-target="#member-form-container"
+                        hx-swap="innerHTML">Edit</button>
+                <button class="btn btn-sm btn-danger" 
+                        hx-delete="/api/proxy/members/${member._id}" 
+                        hx-confirm="Are you sure you want to delete this member?"
+                        hx-target="#members-list"
+                        hx-swap="innerHTML">Delete</button>
+              </div>
             </td>
           </tr>
         `;
@@ -75,6 +97,35 @@ app.get('/partials/members-list', async (req, res) => {
     html += `
         </tbody>
       </table>
+      
+      <style>
+        .guid-display {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .guid-display code {
+          font-family: monospace;
+          font-size: 11px;
+          color: #666;
+          background-color: #f8f9fa;
+          padding: 2px 4px;
+          border-radius: 3px;
+          border: 1px solid #ddd;
+        }
+        .member-actions {
+          display: flex;
+          gap: 5px;
+          flex-wrap: wrap;
+        }
+        .text-muted {
+          color: #6c757d;
+          font-style: italic;
+        }
+        .member-info {
+          font-weight: 500;
+        }
+      </style>
     `;
     
     res.send(html);
@@ -104,6 +155,7 @@ app.get('/partials/groups-list', async (req, res) => {
             <th>Year</th>
             <th>Members</th>
             <th>Status</th>
+            <th>Group ID</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -111,25 +163,62 @@ app.get('/partials/groups-list', async (req, res) => {
     `;
     
     if (groups.length === 0) {
-      html += '<tr><td colspan="5">No groups found</td></tr>';
+      html += '<tr><td colspan="6">No groups found</td></tr>';
     } else {
       groups.forEach(group => {
         html += `
           <tr>
-            <td>${group.name}</td>
+            <td>
+              <div class="group-info">
+                <strong>${group.name}</strong>
+              </div>
+            </td>
             <td>${group.year}</td>
             <td>${group.members.length} members</td>
-            <td>${group.archived ? 'Archived' : 'Active'}</td>
             <td>
-              <button class="btn btn-sm" 
-                      hx-get="/partials/group-form?id=${group._id}" 
-                      hx-target="#group-form-container"
-                      hx-swap="innerHTML">Edit</button>
-              <button class="btn btn-sm btn-danger" 
-                      hx-delete="/api/proxy/groups/${group._id}" 
-                      hx-confirm="Are you sure you want to delete this group?"
-                      hx-target="#groups-list"
-                      hx-swap="innerHTML">Delete</button>
+              <span class="badge ${group.archived ? 'badge-secondary' : 'badge-success'}">
+                ${group.archived ? 'Archived' : 'Active'}
+              </span>
+            </td>
+            <td>
+              <div class="guid-display">
+                <code>${group._id}</code>
+                <button class="btn btn-sm btn-info" 
+                        onclick="copyGuid('${group._id}')" 
+                        title="Copy Group ID">
+                  📋
+                </button>
+              </div>
+            </td>
+            <td>
+              <div class="group-actions">
+                <button class="btn btn-sm" 
+                        hx-get="/partials/group-form?id=${group._id}" 
+                        hx-target="#group-form-container"
+                        hx-swap="innerHTML">Edit</button>
+                <button class="btn btn-sm btn-danger" 
+                        hx-delete="/api/proxy/group/${group._id}" 
+                        hx-confirm="Are you sure you want to delete this group?"
+                        hx-target="#groups-list"
+                        hx-swap="innerHTML">Delete</button>
+                ${!group.archived ? `
+                <button class="btn btn-sm btn-success" 
+                        hx-post="/api/proxy/match/${group._id}" 
+                        hx-target="#groups-list"
+                        hx-swap="innerHTML"
+                        hx-confirm="Generate new matches for this group?">Generate Matches</button>
+                <button class="btn btn-sm btn-info" 
+                        hx-post="/api/proxy/match/email-notification/${group._id}" 
+                        hx-target="#groups-list"
+                        hx-swap="innerHTML"
+                        hx-confirm="Send email notifications to all Secret Santas?">Email Notify</button>
+                <button class="btn btn-sm btn-info" 
+                        hx-post="/api/proxy/match/notification/${group._id}" 
+                        hx-target="#groups-list"
+                        hx-swap="innerHTML"
+                        hx-confirm="Send SMS notifications to all Secret Santas?">SMS Notify</button>
+                ` : ''}
+              </div>
             </td>
           </tr>
         `;
@@ -139,6 +228,42 @@ app.get('/partials/groups-list', async (req, res) => {
     html += `
         </tbody>
       </table>
+      
+      <style>
+        .badge {
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: bold;
+          text-transform: uppercase;
+        }
+        .badge-success {
+          background-color: #28a745;
+          color: white;
+        }
+        .badge-secondary {
+          background-color: #6c757d;
+          color: white;
+        }
+        .guid-display {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .guid-display code {
+          font-size: 11px;
+          color: #666;
+          background-color: #f8f9fa;
+          padding: 2px 4px;
+          border-radius: 3px;
+          border: 1px solid #ddd;
+        }
+        .group-actions {
+          display: flex;
+          gap: 5px;
+          flex-wrap: wrap;
+        }
+      </style>
     `;
     
     res.send(html);
@@ -183,7 +308,7 @@ app.get('/partials/matches-list', async (req, res) => {
           
           <script>
             // Fetch groups and populate dropdown
-            fetch('/api/proxy/groups')
+            fetch('/api/proxy/group')
               .then(response => response.json())
               .then(groups => {
                 const selector = document.getElementById('group-selector');
@@ -242,7 +367,7 @@ app.get('/partials/matches-list', async (req, res) => {
         
         <script>
           // Fetch groups and populate dropdown
-          fetch('/api/proxy/groups')
+          fetch('/api/proxy/group')
             .then(response => response.json())
             .then(groups => {
               const selector = document.getElementById('group-selector');
@@ -313,6 +438,11 @@ app.get('/partials/member-form', async (req, res) => {
           </div>
           
           <div class="form-group">
+            <label for="email">Email (Optional)</label>
+            <input type="email" id="email" name="email" class="form-control" value="${member ? member.email : ''}">
+          </div>
+          
+          <div class="form-group">
             <button type="submit" class="btn btn-success">Save Member</button>
             <button type="button" class="btn" onclick="document.getElementById('member-form-container').innerHTML = ''">Cancel</button>
           </div>
@@ -333,6 +463,156 @@ app.get('/partials/member-form', async (req, res) => {
   }
 });
 
+// Group form
+app.get('/partials/group-form', async (req, res) => {
+  try {
+    const groupId = req.query.id;
+    let group = null;
+    let allMembers = [];
+    
+    if (groupId) {
+      // Fetch group data from API
+      const groupResponse = await axios.get(`${API_URL}/groups/${groupId}`);
+      group = groupResponse.data;
+    }
+    
+    // Fetch all members for the member selection
+    const membersResponse = await axios.get(`${API_URL}/members`);
+    allMembers = membersResponse.data;
+    
+    const html = `
+      <div class="panel">
+        <h3>${group ? 'Edit' : 'Create'} Group</h3>
+        
+        ${group ? `
+        <div class="group-id-info" style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border: 1px solid #ddd;">
+          <strong>Group ID:</strong>
+          <div class="guid-display">
+            <code>${group._id}</code>
+            <button class="btn btn-sm btn-info" 
+                    onclick="copyGuid('${group._id}')" 
+                    title="Copy Group ID">
+              📋 Copy
+            </button>
+          </div>
+        </div>
+        ` : ''}
+        
+        <form method="POST" ${group ? 
+          `hx-put="/api/proxy/group/${group._id}"` : 
+          'hx-post="/api/proxy/group"'
+        }
+              hx-target="#groups-list"
+              hx-swap="innerHTML"
+              hx-trigger="submit"
+              hx-on::after-request="console.log('Form submitted:', event.detail)"
+              hx-on::response-error="console.error('Response error:', event.detail)">
+          
+          <div class="form-group">
+            <label for="name">Group Names</label>
+            <input type="text" id="name" name="name" class="form-control" value="${group ? group.name : ''}" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="year">Year</label>
+            <input type="text" id="year" name="year" class="form-control" value="${group ? group.year : '2025'}" required>
+          </div>
+          
+          <div class="form-group">
+            <label>Select Members</label>
+            <div class="member-select">
+              ${allMembers.map(member => `
+                <div class="member-item">
+                  <label>
+                    <input type="checkbox" name="members[]" value="${member._id}" 
+                          ${group && group.members && group.members.some(m => m._id === member._id) ? 'checked' : ''}>
+                    ${member.firstName} ${member.lastName}
+                    <span class="member-id">(ID: ${member._id})</span>
+                  </label>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <button type="submit" class="btn btn-success">Save Group</button>
+            <button type="button" class="btn" onclick="document.getElementById('group-form-container').innerHTML = ''">Cancel</button>
+          </div>
+        </form>
+      </div>
+      
+      <style>
+        .guid-display {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-top: 5px;
+        }
+        .guid-display code {
+          font-family: monospace;
+          font-size: 12px;
+          color: #666;
+          background-color: #e9ecef;
+          padding: 4px 8px;
+          border-radius: 3px;
+          border: 1px solid #ddd;
+        }
+        .member-id {
+          font-size: 11px;
+          color: #666;
+          font-family: monospace;
+        }
+        .member-select {
+          height: 150px;
+          overflow-y: auto;
+          border: 1px solid #ddd;
+          padding: 10px;
+          border-radius: 4px;
+        }
+        .member-item {
+          padding: 5px;
+          margin-bottom: 5px;
+          border-bottom: 1px solid #eee;
+        }
+      </style>
+    `;
+    
+    res.send(html);
+  } catch (error) {
+    console.error('Error loading group form:', error);
+    res.status(500).send(`
+      <div class="panel">
+        <h3>Error</h3>
+        <p>Failed to load group form: ${error.message}</p>
+        <button class="btn" onclick="document.getElementById('group-form-container').innerHTML = ''">Close</button>
+      </div>
+    `);
+  }
+});
+
+// Test endpoint to debug API responses
+app.get('/debug/api-test', async (req, res) => {
+  try {
+    console.log('Testing API connection...');
+    const response = await axios.get(`${API_URL}/groups`);
+    console.log('API Response:', response.data);
+    res.json({
+      success: true,
+      message: 'API connection successful',
+      data: response.data,
+      status: response.status
+    });
+  } catch (error) {
+    console.error('API Test Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'API connection failed',
+      error: error.message,
+      status: error.response?.status || 'unknown'
+    });
+  }
+});
+
 // ===== API PROXIES =====
 
 // Create a proxy for API requests
@@ -343,19 +623,32 @@ app.use('/api/proxy', createProxyMiddleware({
   },
   changeOrigin: true,
   onProxyRes: function(proxyRes, req, res) {
-    // After successful proxy request to API, redirect to relevant view
+    // After successful proxy request to API, handle HTMX responses properly
     if ((req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') && 
         proxyRes.statusCode >= 200 && proxyRes.statusCode < 300) {
       
-      // Check which entity was affected to determine where to redirect
-      const path = req.path;
-      if (path.includes('/members')) {
-        proxyRes.headers['hx-redirect'] = '/partials/members-list';
-      } else if (path.includes('/groups')) {
-        proxyRes.headers['hx-redirect'] = '/partials/groups-list';
-      } else if (path.includes('/matches')) {
-        proxyRes.headers['hx-redirect'] = '/partials/matches-list';
+      // For HTMX requests, don't redirect, just return success
+      if (req.headers['hx-request']) {
+        // Remove any redirect headers that might cause issues
+        delete proxyRes.headers['hx-redirect'];
+        delete proxyRes.headers['location'];
+        
+        // Set content type to ensure proper HTMX handling
+        proxyRes.headers['content-type'] = 'application/json';
       }
+    }
+  },
+  onError: function(err, req, res) {
+    console.error('Proxy error:', err);
+    if (req.headers['hx-request']) {
+      res.status(500).send(`
+        <div class="alert alert-danger">
+          <h4>Proxy Error</h4>
+          <p>${err.message || 'An error occurred while processing your request'}</p>
+        </div>
+      `);
+    } else {
+      res.status(500).send('Proxy Error: ' + err.message);
     }
   }
 }));

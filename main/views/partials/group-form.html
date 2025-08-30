@@ -1,7 +1,21 @@
 <div class="panel">
     <h3>{{#if group}}Edit{{else}}Create{{/if}} Group</h3>
     
-    <form hx-{{#if group}}put="http://main:3000/api/groups/{{group._id}}"{{else}}post="http://main:3000/api/groups"{{/if}}
+    {{#if group}}
+    <div class="group-id-info" style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border: 1px solid #ddd;">
+      <strong>Group ID:</strong>
+      <div class="guid-display">
+        <code>{{group._id}}</code>
+        <button class="btn btn-sm btn-info" 
+                onclick="copyGuid('{{group._id}}')" 
+                title="Copy Group ID">
+          📋 Copy
+        </button>
+      </div>
+    </div>
+    {{/if}}
+    
+    <form hx-{{#if group}}put="/api/proxy/group/{{group._id}}"{{else}}post="/api/proxy/group"{{/if}}
           hx-target="#groups-list"
           hx-swap="innerHTML">
       
@@ -24,6 +38,9 @@
               <input type="checkbox" name="members[]" value="{{_id}}" 
                     {{#if isSelected}}checked{{/if}}>
               {{firstName}} {{lastName}}
+              {{#if _id}}
+              <span class="member-id">(ID: {{_id}})</span>
+              {{/if}}
             </label>
           </div>
           {{/each}}
@@ -36,3 +53,26 @@
       </div>
     </form>
   </div>
+  
+  <style>
+    .guid-display {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 5px;
+    }
+    .guid-display code {
+      font-family: monospace;
+      font-size: 12px;
+      color: #666;
+      background-color: #e9ecef;
+      padding: 4px 8px;
+      border-radius: 3px;
+      border: 1px solid #ddd;
+    }
+    .member-id {
+      font-size: 11px;
+      color: #666;
+      font-family: monospace;
+    }
+  </style>

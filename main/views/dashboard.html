@@ -68,6 +68,8 @@
     .btn-success:hover { background-color: #218838; }
     .btn-danger { background-color: #dc3545; }
     .btn-danger:hover { background-color: #c82333; }
+    .btn-info { background-color: #17a2b8; }
+    .btn-info:hover { background-color: #138496; }
     .table {
       width: 100%;
       border-collapse: collapse;
@@ -135,11 +137,62 @@
       margin-bottom: 5px;
       border-bottom: 1px solid #eee;
     }
+    .guid-display {
+      font-family: monospace;
+      font-size: 12px;
+      color: #666;
+      background-color: #f8f9fa;
+      padding: 4px 8px;
+      border-radius: 3px;
+      border: 1px solid #ddd;
+      margin-left: 10px;
+    }
+    .group-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .group-actions {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .loading-indicator {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>Secret Santa Dashboard</h1>
+  </div>
+  
+  <!-- Loading Indicator -->
+  <div id="loading-indicator" class="loading-indicator" style="display: none;">
+    <div class="spinner"></div>
+    <span>Processing...</span>
   </div>
   
   <div class="container">
@@ -153,7 +206,7 @@
     <div class="tab-content active" id="content-members">
       <div class="panel">
         <div class="panel-header">
-          <h2>Memberssss</h2>
+          <h2>Members</h2>
           <button class="btn" hx-get="/partials/member-form" hx-target="#member-form-container" hx-swap="innerHTML">Add New Member</button>
         </div>
         
@@ -174,6 +227,17 @@
         </div>
         
         <div id="group-form-container"></div>
+        
+        <!-- Debug Panel -->
+        <div class="panel" style="margin-bottom: 15px; background-color: #f8f9fa;">
+          <h4>Debug: Test API Endpoints</h4>
+          <p>Use this to test if the API is working:</p>
+          <button class="btn btn-sm btn-info" 
+                  onclick="testAPI()">Test API Connection</button>
+          <button class="btn btn-sm btn-warning" 
+                  onclick="testProxy()">Test Proxy Connection</button>
+          <div id="debug-output" style="margin-top: 10px; font-family: monospace; font-size: 12px;"></div>
+        </div>
         
         <div id="groups-list" hx-get="http://main:3000/api/groups" hx-trigger="load" hx-swap="innerHTML">
           <p>Loading groups...</p>
@@ -223,6 +287,133 @@
         }, 5000);
       });
     });
+    
+    // HTMX debugging
+    document.body.addEventListener('htmx:beforeRequest', function(event) {
+      console.log('HTMX Request starting:', event.detail);
+      console.log('Target:', event.detail.target);
+      console.log('Request:', event.detail.requestConfig);
+    });
+    
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+      console.log('HTMX Request completed:', event.detail);
+      console.log('Status:', event.detail.xhr.status);
+      console.log('Response:', event.detail.xhr.responseText);
+    });
+    
+    document.body.addEventListener('htmx:responseError', function(event) {
+      console.error('HTMX Response Error:', event.detail);
+      console.error('Status:', event.detail.xhr.status);
+      console.error('Response:', event.detail.xhr.responseText);
+    });
+    
+    // Function to copy GUID to clipboard
+    function copyGuid(guid) {
+      navigator.clipboard.writeText(guid).then(() => {
+        // Show a brief success message
+        const button = event.target;
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        button.style.backgroundColor = '#28a745';
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.style.backgroundColor = '#17a2b8';
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy: ', err);
+      });
+    }
+    
+    // Debug function to test API
+    async function testAPI() {
+      const debugOutput = document.getElementById('debug-output');
+      debugOutput.innerHTML = 'Testing API connection...';
+      
+      try {
+        // Test the main API endpoint
+        const response = await fetch('http://localhost:3001/api/groups');
+        const data = await response.json();
+        
+        debugOutput.innerHTML = `
+          <strong>✅ API Connection Successful!</strong><br>
+          Status: ${response.status}<br>
+          Groups found: ${data.length}<br>
+          First group ID: ${data[0]?._id || 'None'}<br>
+          <br>
+          <strong>Test Generate Matches:</strong><br>
+          <button class="btn btn-sm btn-success" 
+                  onclick="testGenerateMatches('${data[0]?._id || ''}')"
+                  ${!data[0]?._id ? 'disabled' : ''}>
+            Test Generate Matches for First Group
+          </button>
+        `;
+      } catch (error) {
+        debugOutput.innerHTML = `
+          <strong>❌ API Connection Failed!</strong><br>
+          Error: ${error.message}<br>
+          <br>
+          <strong>Possible issues:</strong><br>
+          - Main server not running on port 3001<br>
+          - Docker containers not started<br>
+          - Network configuration issue
+        `;
+      }
+    }
+    
+    // Test generate matches function
+    async function testGenerateMatches(groupId) {
+      if (!groupId) {
+        alert('No group ID available for testing');
+        return;
+      }
+      
+      const debugOutput = document.getElementById('debug-output');
+      debugOutput.innerHTML += '<br><br>Testing Generate Matches...';
+      
+      try {
+        const response = await fetch(`http://localhost:3001/api/match/${groupId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        debugOutput.innerHTML += `
+          <br><strong>✅ Generate Matches Response:</strong><br>
+          Status: ${response.status}<br>
+          Response: ${JSON.stringify(data, null, 2)}
+        `;
+      } catch (error) {
+        debugOutput.innerHTML += `
+          <br><strong>❌ Generate Matches Failed:</strong><br>
+          Error: ${error.message}
+        `;
+      }
+    }
+    
+    // Test proxy connection function
+    async function testProxy() {
+      const debugOutput = document.getElementById('debug-output');
+      debugOutput.innerHTML += '<br><br>Testing Proxy Connection...';
+      
+      try {
+        const response = await fetch('/debug/api-test');
+        const data = await response.json();
+        
+        debugOutput.innerHTML += `
+          <br><strong>✅ Proxy Test Response:</strong><br>
+          Status: ${response.status}<br>
+          Response: ${JSON.stringify(data, null, 2)}
+        `;
+      } catch (error) {
+        debugOutput.innerHTML += `
+          <br><strong>❌ Proxy Test Failed:</strong><br>
+          Error: ${error.message}
+        `;
+      }
+    }
   </script>
 </body>
 </html>

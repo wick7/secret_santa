@@ -6,6 +6,10 @@ const brevo = require('@getbrevo/brevo');
 const cors = require('cors');
 const port = 3000;
 
+ // Set up Twilio with hardcoded credentials (replace with your actual credentials)
+ const accountSid = process.env.LIO_SID;
+ const authToken = process.env.LIO_AUTH_TOKEN;
+ const client = require('twilio')(accountSid, authToken);
 
 //Libraries
 const { format } = require('date-fns');
@@ -537,6 +541,7 @@ app.get('/api/groups', async (req, res) => {
 //#endregion
 
 // BREVO NOTIFICATIONS
+// SIMPLIFIED TWILIO NOTIFICATIONS ENDPOINT
 app.post('/api/match/notification/:groupId', async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -566,14 +571,6 @@ app.post('/api/match/notification/:groupId', async (req, res) => {
       });
     }
 
-    // If group is already archived, return an error
-    if (group.archived) {
-      return res.status(400).json({
-        success: false,
-        message: 'Group is already archived (notifications already sent)'
-      });
-    }
-
     // Find all non-archived matches for this group
     const matches = await Match.find({
       _id: { $in: group.matchIds },
@@ -587,17 +584,7 @@ app.post('/api/match/notification/:groupId', async (req, res) => {
       });
     }
 
-    // Verify API key exists
-    if (!process.env.BREVO_API_KEY) {
-      return res.status(500).json({
-        success: false,
-        message: 'Brevo API key is not configured'
-      });
-    }
-
-    // Set up direct API access using Axios
-    const axios = require('axios');
-    const BREVO_SENDER = process.env.SMS_SENDER_NAME || 'SecretSanta';
+   
     
     // Prepare to store results of all notifications
     const notificationResults = [];
@@ -610,7 +597,6 @@ app.post('/api/match/notification/:groupId', async (req, res) => {
       const giftee = await Member.findById(match.gifteeId);
 
       if (!secretSanta || !giftee) {
-        console.log(`Match ${match._id} failed: Secret Santa or giftee member not found`);
         failedNotifications.push({
           matchId: match._id,
           error: 'Secret Santa or giftee member not found'
@@ -620,7 +606,6 @@ app.post('/api/match/notification/:groupId', async (req, res) => {
 
       // Check if Secret Santa has a phone number
       if (!secretSanta.phoneNumber) {
-        console.log(`Match ${match._id} failed: Secret Santa phone number is missing`);
         failedNotifications.push({
           matchId: match._id,
           secretSantaId: secretSanta._id,
@@ -633,84 +618,49 @@ app.post('/api/match/notification/:groupId', async (req, res) => {
       const messageText = `Hi ${secretSanta.firstName}, you are the Secret Santa for ${giftee.firstName} ${giftee.lastName}! Please refer to the Excel spreadsheet for gift ideas. Happy gifting!`;
 
       try {
-        // Format phone number - ensuring it starts with +1 for US numbers
+        // Format phone number for Twilio
         let formattedPhoneNumber = secretSanta.phoneNumber;
-        if (formattedPhoneNumber.startsWith('+')) {
-          // Phone number already has country code
-        } else if (formattedPhoneNumber.startsWith('1')) {
-          formattedPhoneNumber = '+' + formattedPhoneNumber;
-        } else {
-          formattedPhoneNumber = '+1' + formattedPhoneNumber;
+        if (!formattedPhoneNumber.startsWith('+')) {
+          formattedPhoneNumber = '+1' + formattedPhoneNumber.replace(/\D/g, '');
         }
 
-        // Remove any non-digit characters except the leading +
-        formattedPhoneNumber = formattedPhoneNumber.replace(/^\+/, '').replace(/\D/g, '');
-        formattedPhoneNumber = '+' + formattedPhoneNumber;
+        // Send SMS using Twilio with the provided syntax
+        const message = await client.messages
+          .create({
+            body: messageText,
+            from: process.env.LIO_PHONE_NUMBER,
+            to: formattedPhoneNumber
+          });
 
-        // Create SMS data for Brevo
-        const smsData = {
-          sender: BREVO_SENDER,
-          recipient: formattedPhoneNumber,
-          content: messageText,
-          type: "transactional"
-        };
+        console.log(`SMS sent successfully for match ${match._id}:`, message.sid);
 
-        // Send SMS using Brevo API
-        const response = await axios.post(
-          process.env.BREV_BASE_SMS,
-          smsData,
-          {
-            headers: {
-              'accept': 'application/json',
-              'api-key': process.env.BREVO_API_KEY,
-              'content-type': 'application/json'
-            }
-          }
-        );
-
-        const smsId = response.data.messageId || 'unknown';
-        console.log(`SMS sent successfully for match ${match._id}:`, smsId);
-
-        // ONLY after successful text message:
-        // 1. Update the match to archived status
+        // Update match status
         match.archived = true;
         await match.save();
 
-        // 2. Update the secretSanta's lastGifteeMatch array by adding giftee's ID
+        // Update the secretSanta's lastGifteeMatch array
         await Member.findByIdAndUpdate(
           secretSanta._id,
           { $push: { lastGifteeMatch: giftee._id } }
         );
 
-        // 3. Add successful notification to results
         notificationResults.push({
           success: true,
-          messageId: smsId,
+          messageId: message.sid,
           secretSanta: {
             id: secretSanta._id,
-            name: `${secretSanta.firstName} ${secretSanta.lastName}`,
-            phoneNumber: secretSanta.phoneNumber
+            name: `${secretSanta.firstName} ${secretSanta.lastName}`
           },
           giftee: {
             id: giftee._id,
             name: `${giftee.firstName} ${giftee.lastName}`
-          },
-          messageText,
-          matchId: match._id,
-          matchArchived: true,
-          memberUpdated: true
+          }
         });
       } catch (smsError) {
-        // If SMS message fails, DO NOT archive the match
-        console.error(`Error sending SMS via Brevo for match ${match._id}:`, 
-          smsError.response?.data || smsError.message);
+        console.error(`Error sending SMS:`, smsError);
         failedNotifications.push({
           matchId: match._id,
-          secretSantaId: secretSanta._id,
-          gifteeId: giftee._id,
-          error: `Failed to send SMS: ${smsError.response?.data?.message || smsError.message}`,
-          matchArchived: false,
-          memberUpdated: false
+          error: `Failed to send SMS: ${smsError.message}`
         });
       }
     }
@@ -731,18 +681,16 @@ app.post('/api/match/notification/:groupId', async (req, res) => {
       notifications: notificationResults
     };
 
-    // If there were failures, include them in the response
     if (failedNotifications.length > 0) {
       responseData.failures = failedNotifications;
     }
 
-    // Always return JSON response
     return res.json(responseData);
   } catch (error) {
-    console.error('Error generating match notifications:', error);
+    console.error('Error sending notifications:', error);
     return res.status(500).json({
       success: false,
-      message: 'Server error while generating match notifications',
+      message: 'Server error while sending notifications',
       error: error.message
     });
   }
